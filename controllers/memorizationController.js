@@ -1,5 +1,6 @@
 const MemorizationEntry = require('../models/MemorizationEntry');
 const MemorizationSession = require('../models/MemorizationSession');
+const RevisionSession = require('../models/RevisionSession');
 
 // Start a new memorization entry
 exports.startMemorization = async (req, res) => {
@@ -95,16 +96,30 @@ exports.finishMemorization = async (req, res) => {
       await activeSession.save();
     }
 
+    // Get all completed sessions for this entry
+    const completedSessions = await MemorizationSession.find({
+      memorizationEntry: entryId,
+      completed: true
+    });
+
+    // Calculate total time by multiplying number of completed sessions by session duration (25 minutes)
+    const totalTimeInMinutes = completedSessions.length * 25; // Each session is 25 minutes
+
     // Update the entry status
     entry.status = 'completed';
     entry.dateCompleted = new Date();
     entry.confidenceLevel = confidenceLevel;
     entry.notes = notes;
+    entry.totalTimeSpent = totalTimeInMinutes;
     await entry.save();
 
     res.json({ 
       message: 'Memorization completed successfully',
-      entry,
+      entry: {
+        ...entry.toObject(),
+        totalTimeSpent: totalTimeInMinutes,
+        totalSessions: completedSessions.length
+      },
       lastSession: activeSession 
     });
   } catch (error) {
@@ -188,6 +203,146 @@ exports.checkSessionStatus = async (req, res) => {
       const entry = await MemorizationEntry.findById(session.memorizationEntry);
       entry.totalSessionsCompleted += 1;
       await entry.save();
+    }
+
+    res.json({ session });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+// Start a revision session
+exports.startRevisionSession = async (req, res) => {
+  try {
+    const { entryId } = req.params;
+    let { duration } = req.body;
+    duration = parseInt(duration);
+    
+    // Validate duration
+    if (duration !== 10 && duration !== 15 && duration !== 20 && duration !== 25) {
+      throw new Error('Invalid duration. Must be 10, 15, 20, or 25 minutes');
+    }
+
+    // Check if entry exists and is completed
+    const entry = await MemorizationEntry.findById(entryId);
+    if (!entry) throw new Error('Memorization entry not found');
+    if (entry.status !== 'completed') throw new Error('Cannot revise uncompleted memorization');
+
+    // Check number of existing revision sessions
+    const existingRevisions = await RevisionSession.countDocuments({
+      memorizationEntry: entryId
+    });
+
+    if (existingRevisions >= 5) {
+      throw new Error('Maximum 5 revision sessions allowed per entry');
+    }
+
+    // Create new revision session
+    const revisionSession = await RevisionSession.create({
+      user: req.user._id,
+      memorizationEntry: entryId,
+      duration
+    });
+
+    res.status(201).json({ revisionSession });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+// Complete a revision session
+exports.completeRevisionSession = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { rating } = req.body;
+
+    const session = await RevisionSession.findById(sessionId);
+    if (!session) throw new Error('Revision session not found');
+
+    session.endTime = new Date();
+    session.completed = true;
+    session.rating = rating;
+    await session.save();
+
+    // Update the memorization entry's reviewDates
+    const entry = await MemorizationEntry.findById(session.memorizationEntry);
+    entry.reviewDates.push({
+      date: new Date(),
+      rating
+    });
+    await entry.save();
+
+    res.json({ session, entry });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+// Toggle pause for revision session
+exports.toggleRevisionPause = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const session = await RevisionSession.findById(sessionId);
+    
+    if (!session) throw new Error('Revision session not found');
+
+    if (!session.isPaused) {
+      // Pausing the session
+      session.isPaused = true;
+      session.pauseStartTime = new Date();
+    } else {
+      // Resuming the session
+      const pauseDuration = (new Date() - new Date(session.pauseStartTime)) / (1000 * 60); // in minutes
+      session.totalPauseDuration += pauseDuration;
+      session.isPaused = false;
+      session.pauseStartTime = null;
+    }
+
+    await session.save();
+    res.json({ session });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+// Get revision sessions for an entry
+exports.getRevisionSessions = async (req, res) => {
+  try {
+    const { entryId } = req.params;
+
+    const revisionSessions = await RevisionSession.find({
+      memorizationEntry: entryId
+    }).sort('startTime');
+
+    res.json({
+      revisionSessions,
+      totalSessions: revisionSessions.length,
+      completedSessions: revisionSessions.filter(s => s.completed).length
+    });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+// Check revision session status
+exports.checkRevisionStatus = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const session = await RevisionSession.findById(sessionId);
+    
+    if (!session || session.completed) {
+      return res.json({ session });
+    }
+
+    const now = new Date();
+    const startTime = new Date(session.startTime);
+    const elapsedTime = (now - startTime) / (1000 * 60); // in minutes
+    const actualDuration = elapsedTime - (session.totalPauseDuration || 0);
+
+    if (actualDuration >= session.duration && !session.isPaused) {
+      session.completed = true;
+      session.endTime = now;
+      await session.save();
     }
 
     res.json({ session });

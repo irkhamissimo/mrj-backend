@@ -49,7 +49,11 @@ const memorizationEntrySchema = new mongoose.Schema({
   reviewDates: [{
     date: Date,
     rating: Number
-  }]
+  }],
+  totalTimeSpent: {
+    type: Number,
+    default: 0
+  }
 });
 
 // Virtual property to get associated sessions
