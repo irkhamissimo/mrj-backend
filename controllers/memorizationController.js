@@ -2,6 +2,7 @@ const MemorizationEntry = require('../models/MemorizationEntry');
 const MemorizationSession = require('../models/MemorizationSession');
 const RevisionSession = require('../models/RevisionSession');
 const Surah = require('../models/Surah');
+const TemporaryVault = require('../models/TemporaryVault');
 
 // Start a new memorization entry
 exports.startMemorization = async (req, res) => {
@@ -127,8 +128,8 @@ exports.finishMemorization = async (req, res) => {
       completed: true
     });
 
-    // Calculate total time by multiplying number of completed sessions by session duration (25 minutes)
-    const totalTimeInMinutes = completedSessions.length * 25; // Each session is 25 minutes
+    // Calculate total time
+    const totalTimeInMinutes = completedSessions.length * 25;
 
     // Update the entry status
     entry.status = 'completed';
@@ -138,6 +139,46 @@ exports.finishMemorization = async (req, res) => {
     entry.totalTimeSpent = totalTimeInMinutes;
     await entry.save();
 
+    // Add to temporary vault
+    let vaultEntry = await TemporaryVault.findOne({
+      user: req.user._id,
+      surahNumber: entry.surahNumber,
+      status: 'pending'
+    });
+
+    if (vaultEntry) {
+      // Add new verses to existing entry
+      vaultEntry.verses.push({
+        fromVerse: entry.fromVerse,
+        toVerse: entry.toVerse,
+        dateAdded: new Date()
+      });
+
+      // Update consolidated verses
+      vaultEntry.consolidatedVerses = {
+        fromVerse: Math.min(vaultEntry.consolidatedVerses.fromVerse, entry.fromVerse),
+        toVerse: Math.max(vaultEntry.consolidatedVerses.toVerse, entry.toVerse)
+      };
+    } else {
+      // Create new vault entry
+      vaultEntry = new TemporaryVault({
+        user: req.user._id,
+        surahNumber: entry.surahNumber,
+        surahName: entry.surahName,
+        verses: [{
+          fromVerse: entry.fromVerse,
+          toVerse: entry.toVerse,
+          dateAdded: new Date()
+        }],
+        consolidatedVerses: {
+          fromVerse: entry.fromVerse,
+          toVerse: entry.toVerse
+        }
+      });
+    }
+
+    await vaultEntry.save();
+
     res.json({ 
       message: 'Memorization completed successfully',
       entry: {
@@ -145,7 +186,8 @@ exports.finishMemorization = async (req, res) => {
         totalTimeSpent: totalTimeInMinutes,
         totalSessions: completedSessions.length
       },
-      lastSession: activeSession 
+      lastSession: activeSession,
+      vaultEntry 
     });
   } catch (error) {
     res.status(400).json({ error: error.message });

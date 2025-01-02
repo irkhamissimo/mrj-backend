@@ -53,6 +53,23 @@ const memorizationEntrySchema = new mongoose.Schema({
   totalTimeSpent: {
     type: Number,
     default: 0
+  },
+  isVerified: {
+    type: Boolean,
+    default: false
+  },
+  teacherVerification: {
+    verifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    verificationDate: Date,
+    rating: {
+      type: Number,
+      min: 1,
+      max: 5
+    },
+    notes: String
   }
 });
 
