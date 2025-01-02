@@ -1,16 +1,31 @@
 const MemorizationEntry = require('../models/MemorizationEntry');
 const MemorizationSession = require('../models/MemorizationSession');
 const RevisionSession = require('../models/RevisionSession');
+const Surah = require('../models/Surah');
 
 // Start a new memorization entry
 exports.startMemorization = async (req, res) => {
   try {
-    const { surahNumber, surahName, fromVerse, toVerse } = req.body;
+    const { surahNumber, fromVerse, toVerse } = req.body;
     
+    // Get surah details to validate
+    const surah = await Surah.findOne({ number: surahNumber });
+    if (!surah) {
+      throw new Error('Invalid surah number');
+    }
+
+    // Validate verse numbers
+    if (fromVerse < 1 || toVerse > surah.numberOfAyahs) {
+      throw new Error(`Verse numbers must be between 1 and ${surah.numberOfAyahs}`);
+    }
+    if (fromVerse > toVerse) {
+      throw new Error('Starting verse must be less than or equal to ending verse');
+    }
+
     const entry = await MemorizationEntry.create({
       user: req.user._id,
       surahNumber,
-      surahName,
+      surahName: surah.name,
       fromVerse,
       toVerse
     });
@@ -21,7 +36,17 @@ exports.startMemorization = async (req, res) => {
       memorizationEntry: entry._id
     });
 
-    res.status(201).json({ entry, session });
+    res.status(201).json({ 
+      entry: {
+        ...entry.toObject(),
+        surahDetails: {
+          englishName: surah.englishName,
+          englishNameTranslation: surah.englishNameTranslation,
+          numberOfAyahs: surah.numberOfAyahs
+        }
+      }, 
+      session 
+    });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
