@@ -58,43 +58,49 @@ exports.startNewSession = async (req, res) => {
   try {
     const { entryId } = req.params;
     
+    // First, check and complete any active sessions that have passed 25 minutes
+    const activeSession = await MemorizationSession.findOne({
+      memorizationEntry: entryId,
+      completed: false
+    });
+
+    if (activeSession) {
+      const now = new Date();
+      const startTime = new Date(activeSession.startTime);
+      const elapsedTime = (now - startTime) / (1000 * 60); // in minutes
+      const actualDuration = elapsedTime - (activeSession.totalPauseDuration || 0);
+
+      if (actualDuration >= activeSession.duration && !activeSession.isPaused) {
+        activeSession.completed = true;
+        activeSession.endTime = now;
+        await activeSession.save();
+
+        // Update the memorization entry
+        const entry = await MemorizationEntry.findById(entryId);
+        entry.totalSessionsCompleted += 1;
+        await entry.save();
+      } else if (!activeSession.isPaused) {
+        throw new Error('Previous session is still in progress');
+      }
+    }
+
+    // Count completed sessions
     const existingSessions = await MemorizationSession.countDocuments({
-      memorizationEntry: entryId
+      memorizationEntry: entryId,
+      completed: true
     });
 
     if (existingSessions >= 4) {
       throw new Error('Maximum 4 sessions allowed per entry');
     }
 
+    // Create new session
     const session = await MemorizationSession.create({
       user: req.user._id,
       memorizationEntry: entryId
     });
 
     res.status(201).json(session);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-};
-
-// Complete a session
-exports.completeSession = async (req, res) => {
-  try {
-    const { sessionId } = req.params;
-
-    const session = await MemorizationSession.findById(sessionId);
-    if (!session) throw new Error('Session not found');
-
-    session.endTime = new Date();
-    session.completed = true;
-    await session.save();
-
-    // Update the memorization entry
-    const entry = await MemorizationEntry.findById(session.memorizationEntry);
-    entry.totalSessionsCompleted += 1;
-    await entry.save();
-
-    res.json({ session, entry });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
