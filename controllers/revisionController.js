@@ -103,4 +103,35 @@ exports.startRevision = async (req, res) => {
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
+};
+
+// Add this new method to handle pause/resume
+exports.pauseRevision = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const session = await RevisionSession.findById(sessionId);
+    
+    if (!session) throw new Error('Revision session not found');
+    if (session.completed) throw new Error('Cannot pause completed session');
+
+    if (!session.isPaused) {
+      // Pausing the session
+      session.isPaused = true;
+      session.pauseStartTime = new Date();
+    } else {
+      // Resuming the session
+      const pauseDuration = (new Date() - new Date(session.pauseStartTime)) / (1000 * 60); // in minutes
+      session.totalPauseDuration += pauseDuration;
+      session.isPaused = false;
+      session.pauseStartTime = null;
+    }
+
+    await session.save();
+    res.json({ 
+      message: session.isPaused ? 'Session paused' : 'Session resumed',
+      session 
+    });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 }; 

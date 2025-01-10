@@ -43,5 +43,6 @@ const getJuzNumber = (surahNumber, verseNumber) => {
 };
 
 module.exports = {
-  getJuzNumber
+  getJuzNumber,
+  juzMap
 }; 
