@@ -48,7 +48,6 @@ exports.register = async function (req, res) {
 exports.login = async function (req, res) {
   try {
     const { email, password } = req.body;
-    console.log(req.body);
 
     if (!email || !password) {
       return res
@@ -63,7 +62,6 @@ exports.login = async function (req, res) {
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
-    console.log(isMatch);
     if (!isMatch) {
       return res.status(400).json({ message: "username atau password salah" });
     }
@@ -81,6 +79,7 @@ exports.login = async function (req, res) {
       },
     });
   } catch (error) {
+    console.log(error);
     res.status(400).json({ message: "Login error", error: error.message });
   }
 };

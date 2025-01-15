@@ -264,10 +264,11 @@ exports.checkSessionStatus = async (req, res) => {
 
     const now = new Date();
     const startTime = new Date(session.startTime);
-    const elapsedTime = (now - startTime) / (1000 * 60); // in minutes
-    const actualDuration = elapsedTime - (session.totalPauseDuration || 0);
+    const elapsedTime = (now - startTime) / 1000; // Changed to seconds
+    const actualDuration = elapsedTime - ((session.totalPauseDuration || 0) * 60); // Convert pause duration to seconds
 
-    if (actualDuration >= session.duration && !session.isPaused) {
+    // For testing: 25 seconds instead of 25 minutes
+    if (actualDuration >= 25 && !session.isPaused) { // Changed from session.duration to 25 seconds
       session.completed = true;
       session.endTime = now;
       await session.save();
