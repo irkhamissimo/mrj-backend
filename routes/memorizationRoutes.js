@@ -9,12 +9,13 @@ router.put('/:entryId/finish', auth, memorizationController.finishMemorization);
 router.get('/:entryId/progress', auth, memorizationController.getMemorizationProgress);
 router.put('/sessions/:sessionId/pause', auth, memorizationController.togglePauseSession);
 router.get('/sessions/:sessionId/status', auth, memorizationController.checkSessionStatus);
-
+router.get('/:entryId/completed', auth, memorizationController.getCompletedMemorization);
 // Revision routes
 router.post('/:entryId/revisions', auth, memorizationController.startRevisionSession);
 router.put('/revisions/:sessionId/complete', auth, memorizationController.completeRevisionSession);
 router.put('/revisions/:sessionId/pause', auth, memorizationController.toggleRevisionPause);
 router.get('/:entryId/revisions', auth, memorizationController.getRevisionSessions);
 router.get('/revisions/:sessionId/status', auth, memorizationController.checkRevisionStatus);
+router.get('/completed', auth, memorizationController.getAllCompletedMemorizations);
 
 module.exports = router; 

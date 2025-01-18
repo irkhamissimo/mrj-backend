@@ -14,6 +14,10 @@ const memorizationEntrySchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  surahEnglishName: {
+    type: String,
+    required: true
+  },
   fromVerse: {
     type: Number,
     required: true
