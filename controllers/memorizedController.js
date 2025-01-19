@@ -36,6 +36,7 @@ exports.addMemorizedSurah = async (req, res) => {
         user: req.user._id,
         surahNumber,
         surahName: surah.name,
+        surahEnglishName: surah.englishName,
         juzNumber,
         verses: { fromVerse, toVerse },
         verificationDate: new Date(),
@@ -112,6 +113,7 @@ exports.addMemorizedJuz = async (req, res) => {
             user: req.user._id,
             surahNumber: currentSurah,
             surahName: surah.name,
+            surahEnglishName: surah.englishName,
             juzNumber,
             verses: { fromVerse, toVerse },
             verificationDate: new Date(),
@@ -186,3 +188,15 @@ exports.getAllMemorized = async (req, res) => {
     res.status(400).json({ error: error.message });
   }
 }; 
+
+// Update memorized surah verses
+exports.updateMemorizedSurahVerses = async (req, res) => {
+ try {
+  const { surahNumber} =req.params;
+  const { verses } = req.body;
+  const memorized = await VerifiedMemorization.findOneAndUpdate({ surahNumber, user: req.user._id }, { verses });
+  res.json(memorized);
+ } catch (error) {
+  res.status(400).json({ error: error.message });
+ }
+};

@@ -16,9 +16,15 @@ const menuItems = [
     isActive: true
   },
   {
+    title: 'Murajaah',
+    path: '/murajaah',
+    order: 3,
+    isActive: true
+  },
+  {
     title: 'Daftar Ziyadah',
     path: '/revisions',
-    order: 3,
+    order: 4,
     isActive: true
   }
 ];

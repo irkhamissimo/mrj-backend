@@ -9,7 +9,7 @@ const revisionSessionSchema = new mongoose.Schema({
   memorizationEntry: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'MemorizationEntry',
-    required: true
+    required: false
   },
   startTime: {
     type: Date,
