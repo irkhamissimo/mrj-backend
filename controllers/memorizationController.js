@@ -475,3 +475,25 @@ exports.getAllCompletedMemorizations = async (req, res) => {
     res.status(400).json({ error: error.message });
   }
 };
+
+// get memorization by dateStarted
+exports.getMemorizationByDateStarted = async (req, res) => {
+  try {
+    const dateNow = new Date();
+    const localDateNow = new Date(dateNow.toLocaleString());
+    const dateOnly = new Date(localDateNow.getFullYear(), localDateNow.getMonth(), localDateNow.getDate());
+    const memorizations = await MemorizationEntry.find({ dateStarted: { $gte: dateOnly } });
+    
+    const memorizationsWithSurahEnglishName = memorizations.map((memorization) => ({
+      surahNumber: memorization.surahNumber,
+      surahEnglishName: memorization.surahEnglishName,
+      fromVerse: memorization.fromVerse,
+      toVerse: memorization.toVerse,
+      status: memorization.status,
+      totalSessionsCompleted: memorization.totalSessionsCompleted,
+    }));
+    res.json(memorizationsWithSurahEnglishName);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
