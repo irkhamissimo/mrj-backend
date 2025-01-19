@@ -10,9 +10,15 @@ const menuItems = [
     isActive: true
   },
   {
+    title: 'Hafalan Belum Disetor',
+    path: '/vault',
+    order: 2,
+    isActive: true
+  },
+  {
     title: 'Daftar Ziyadah',
     path: '/revisions',
-    order: 2,
+    order: 3,
     isActive: true
   }
 ];
