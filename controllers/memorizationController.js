@@ -180,6 +180,7 @@ exports.finishMemorization = async (req, res) => {
         user: req.user._id,
         surahNumber: entry.surahNumber,
         surahName: entry.surahName,
+        surahEnglishName: entry.surahEnglishName,
         verses: [
           {
             fromVerse: entry.fromVerse,
