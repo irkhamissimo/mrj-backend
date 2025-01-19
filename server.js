@@ -49,6 +49,9 @@ app.use('/api/revisions', revisionRoutes);
 const memorizedRoutes = require('./routes/memorizedRoutes');
 app.use('/api/memorized', memorizedRoutes);
 
+const menuRoutes = require('./routes/menuRoutes');
+app.use('/api/menu', menuRoutes);
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
