@@ -1,5 +1,5 @@
 const VerifiedMemorization = require('../models/VerifiedMemorization');
-const RevisionSession = require('../models/RevisionSession');
+const MurajaahSession = require('../models/MurajaahSession');
 
 // Get verified memorizations by surah
 exports.getVerifiedBySurah = async (req, res) => {
@@ -92,8 +92,8 @@ exports.startRevision = async (req, res) => {
       throw new Error('No verified memorizations found');
     }
 
-    // Create revision session
-    const session = await RevisionSession.create({
+    // Create murajaah session
+    const session = await MurajaahSession.create({
       user: req.user._id,
       duration,
       verifiedMemorizations: verifiedMems.map(mem => mem._id)
@@ -109,9 +109,9 @@ exports.startRevision = async (req, res) => {
 exports.pauseRevision = async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const session = await RevisionSession.findById(sessionId);
+    const session = await MurajaahSession.findById(sessionId);
     
-    if (!session) throw new Error('Revision session not found');
+    if (!session) throw new Error('Murajaah session not found');
     if (session.completed) throw new Error('Cannot pause completed session');
 
     if (!session.isPaused) {
@@ -134,4 +134,57 @@ exports.pauseRevision = async (req, res) => {
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
-}; 
+};
+
+// Check session status
+exports.checkSessionStatus = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const session = await MurajaahSession.findById(sessionId);
+
+    if (!session || session.completed) {
+      return res.json({ session });
+    }
+
+    const now = new Date();
+    const startTime = new Date(session.startTime);
+    const elapsedTime = (now - startTime) / 1000; // in seconds
+    const actualDuration = elapsedTime - (session.totalPauseDuration || 0) * 60; // Convert pause duration to seconds
+
+    // Check if session should be completed
+    if (actualDuration >= 25 && !session.isPaused) {
+      session.completed = true;
+      session.endTime = now;
+      await session.save();
+
+      // Update verified memorizations
+      for (const memId of session.verifiedMemorizations) {
+        const verifiedMem = await VerifiedMemorization.findById(memId);
+        if (verifiedMem) {
+          verifiedMem.lastRevisionDate = now;
+          await verifiedMem.save();
+        }
+      }
+    }
+
+    res.json({ session });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+// Get memorized content
+exports.getMemorizedContent = async (req, res) => {
+  try {
+    const dateNow = new Date();
+    const localDateNow = new Date(dateNow.toLocaleString());
+    const dateOnly = new Date(localDateNow.getFullYear(), localDateNow.getMonth(), localDateNow.getDate());
+    const memorizedContent = await MemorizationEntry.find({ user: req.user._id, dateStarted: { $gte: dateOnly } });
+// get how many sessions completed
+    const totalSessionsCompleted = memorizedContent.reduce((acc, mem) => acc + mem.totalSessionsCompleted, 0);  
+
+    res.json({ totalSessionsCompleted });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
