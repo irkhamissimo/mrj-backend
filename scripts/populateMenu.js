@@ -26,6 +26,12 @@ const menuItems = [
     path: '/revisions',
     order: 4,
     isActive: true
+  },
+  {
+    title: "Murajaah Player",
+    path: "/murajaah/:type/:identifier",
+    order: 5,
+    isActive: true
   }
 ];
 
