@@ -67,6 +67,7 @@ exports.getVerifiedByJuz = async (req, res) => {
 exports.startRevision = async (req, res) => {
   try {
     const { type, identifier, duration } = req.body; // type: 'surah' or 'juz', identifier: surahNumber or juzNumber
+    // make duration 25 seconds
 
     // Validate duration
     if (duration !== 25) {
