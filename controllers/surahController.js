@@ -4,7 +4,7 @@ const Surah = require('../models/Surah');
 exports.getAllSurahs = async (req, res) => {
   try {
     const surahs = await Surah.find({})
-      .select('number name englishName numberOfAyahs')
+      .select('number englishName numberOfAyahs')
       .sort('number');
     
     res.json(surahs);

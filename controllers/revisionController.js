@@ -1,5 +1,6 @@
 const VerifiedMemorization = require('../models/VerifiedMemorization');
 const MurajaahSession = require('../models/MurajaahSession');
+const MemorizationEntry = require('../models/MemorizationEntry');
 
 // Get verified memorizations by surah
 exports.getVerifiedBySurah = async (req, res) => {
@@ -183,6 +184,22 @@ exports.getMemorizedContent = async (req, res) => {
     const memorizedContent = await MemorizationEntry.find({ user: req.user._id, dateStarted: { $gte: dateOnly } });
 // get how many sessions completed
     const totalSessionsCompleted = memorizedContent.reduce((acc, mem) => acc + mem.totalSessionsCompleted, 0);  
+
+    res.json({ totalSessionsCompleted });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+// get murajaah sessions by date
+exports.countMurajaahSessions = async (req, res) => {
+  try {
+    const dateNow = new Date();
+    const localDateNow = new Date(dateNow.toLocaleString());
+    const dateOnly = new Date(localDateNow.getFullYear(), localDateNow.getMonth(), localDateNow.getDate());
+    const sessions = await MurajaahSession.find({startTime: { $gte: dateOnly } });
+    
+    const totalSessionsCompleted = sessions.filter(session => session.completed).length;
 
     res.json({ totalSessionsCompleted });
   } catch (error) {
