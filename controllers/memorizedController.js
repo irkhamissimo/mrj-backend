@@ -1,7 +1,7 @@
 const VerifiedMemorization = require('../models/VerifiedMemorization');
 const Surah = require('../models/Surah');
 const { getJuzNumber, juzMap } = require('../utils/quranHelpers');
-
+const jwt = require('jsonwebtoken');
 // Add previously memorized surah
 exports.addMemorizedSurah = async (req, res) => {
   try {
@@ -140,6 +140,9 @@ exports.addMemorizedJuz = async (req, res) => {
 // Get all memorized content (both from verification and direct addition)
 exports.getAllMemorized = async (req, res) => {
   try {
+    // get token from header
+    const token = req.headers.authorization.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const memorized = await VerifiedMemorization.find({
       user: req.user._id
     }).sort({ surahNumber: 1, 'verses.fromVerse': 1 });

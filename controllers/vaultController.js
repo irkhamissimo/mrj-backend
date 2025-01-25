@@ -82,7 +82,6 @@ exports.verifyAndTransfer = async (req, res) => {
     const { rating, notes } = req.body;
 
     const vaultEntry = await TemporaryVault.findById(vaultId);
-    console.log(vaultEntry);
     if (!vaultEntry) throw new Error('Vault entry not found');
 
     // Get the juz number for these verses

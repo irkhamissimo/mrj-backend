@@ -3,6 +3,16 @@ const User = require("../models/User");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 
+const generateTokens = (userId) => {
+  const accessToken = jwt.sign({ id: userId }, process.env.JWT_SECRET, {
+    expiresIn: "15m",
+  });
+  const refreshToken = jwt.sign({ id: userId }, process.env.REFRESH_TOKEN_SECRET, {
+    expiresIn: "7d",
+  });
+  return { accessToken, refreshToken };
+};
+
 exports.register = async function (req, res) {
   try {
     const { username, password, email } = req.body;
@@ -27,13 +37,10 @@ exports.register = async function (req, res) {
     });
 
     const savedUser = await newUser.save();
-
-    const token = jwt.sign({ id: savedUser._id }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
-    });
+    const tokens = generateTokens(savedUser._id);
 
     res.status(201).json({
-      token,
+      ...tokens,
       user: {
         id: savedUser._id,
         username: savedUser.username,
@@ -66,12 +73,10 @@ exports.login = async function (req, res) {
       return res.status(400).json({ message: "username atau password salah" });
     }
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
-    });
+    const tokens = generateTokens(user._id);
 
     res.json({
-      token,
+      ...tokens,
       user: {
         id: user._id,
         username: user.username,
@@ -79,7 +84,35 @@ exports.login = async function (req, res) {
       },
     });
   } catch (error) {
-    console.log(error);
     res.status(400).json({ message: "Login error", error: error.message });
+  }
+};
+
+exports.refreshToken = async function (req, res) {
+  try {
+    const refreshToken = req.body.refreshToken;
+    if (!refreshToken) {
+      return res.status(401).json({ message: "Refresh token tidak ditemukan" });
+    }
+
+    const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+    const user = await User.findById(decoded.id);
+
+    if (!user) {
+      return res.status(401).json({ message: "User tidak ditemukan" });
+    }
+
+    const tokens = generateTokens(user._id);
+
+    res.json({
+      ...tokens,
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+      },
+    });
+  } catch (error) {
+    return res.status(401).json({ message: "Invalid refresh token" });
   }
 };
