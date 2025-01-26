@@ -17,6 +17,7 @@ router.put('/revisions/:sessionId/complete', auth, memorizationController.comple
 router.put('/revisions/:sessionId/pause', auth, memorizationController.toggleRevisionPause);
 router.get('/:entryId/revisions', auth, memorizationController.getRevisionSessions);
 router.get('/revisions/:sessionId/status', auth, memorizationController.checkRevisionStatus);
-router.get('/completed', auth, memorizationController.countCompletedMemorization);
+router.get('/countCompletedMemorizations', auth, memorizationController.countCompletedMemorization);
+router.get('/completed', auth, memorizationController.getCompletedMemorization);
 
 module.exports = router; 

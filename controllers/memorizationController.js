@@ -464,6 +464,17 @@ exports.getCompletedMemorization = async (req, res) => {
 };
 
 // Add this new function to get all completed memorizations
+exports.getCompletedMemorization = async (req, res) => {
+  try {
+    const memorizations = await MemorizationEntry.find({
+      status: "completed",
+    });
+    res.json(memorizations);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
 exports.countCompletedMemorization = async (req, res) => {
   try {
     // return count of completed memorizations
