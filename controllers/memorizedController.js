@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 exports.addMemorizedSurah = async (req, res) => {
   try {
     const { surahNumber, fromVerse, toVerse } = req.body;
+    console.log(surahNumber, fromVerse, toVerse);
 
     // Validate surah and verses
     const surah = await Surah.findOne({ number: surahNumber });
@@ -15,38 +16,65 @@ exports.addMemorizedSurah = async (req, res) => {
     }
 
     // Get juz number for these verses
-    const juzNumber = getJuzNumber(surahNumber, fromVerse);
+    const startJuz = getJuzNumber(surahNumber, fromVerse);
+    const endJuz = getJuzNumber(surahNumber, toVerse);
 
-    // Check if there's an existing verified memorization for this surah
-    let verifiedMem = await VerifiedMemorization.findOne({
-      user: req.user._id,
-      surahNumber,
-      juzNumber
-    });
+    // We need to split the verses if they span multiple juz
+    for (let currentJuz = startJuz; currentJuz <= endJuz; currentJuz++) {
+      // Find juz boundaries
+      const juzStartInfo = juzMap[currentJuz - 1];
+      const juzEndInfo = currentJuz < 30 ? juzMap[currentJuz] : [114, 6];
 
-    if (verifiedMem) {
-      // Update existing verified memorization
-      verifiedMem.verses = {
-        fromVerse: Math.min(verifiedMem.verses.fromVerse, fromVerse),
-        toVerse: Math.max(verifiedMem.verses.toVerse, toVerse)
-      };
-    } else {
-      // Create new verified memorization
-      verifiedMem = new VerifiedMemorization({
+      let juzFromVerse = fromVerse;
+      let juzToVerse = toVerse;
+
+      // Adjust verses based on juz boundaries
+      if (currentJuz !== startJuz) {
+        // If not the first juz, start from the juz's first verse
+        juzFromVerse = surahNumber === juzStartInfo[0] ? juzStartInfo[1] : 1;
+      }
+      if (currentJuz !== endJuz) {
+        // If not the last juz, end at the juz's last verse
+        juzToVerse = surahNumber === juzEndInfo[0] ? juzEndInfo[1] - 1 : surah.numberOfAyahs;
+      }
+
+      // Check if there's an existing memorization for this surah and juz
+      let verifiedMem = await VerifiedMemorization.findOne({
         user: req.user._id,
         surahNumber,
-        surahName: surah.name,
-        surahEnglishName: surah.englishName,
-        juzNumber,
-        verses: { fromVerse, toVerse },
-        verificationDate: new Date(),
-        // Initialize with good rating since it's previously memorized
-        averageRating: 5
+        juzNumber: currentJuz
       });
+
+      if (verifiedMem) {
+        // Update existing memorization if new verses extend the range
+        verifiedMem.verses = {
+          fromVerse: Math.min(verifiedMem.verses.fromVerse, juzFromVerse),
+          toVerse: Math.max(verifiedMem.verses.toVerse, juzToVerse)
+        };
+      } else {
+        // Create new memorization entry
+        verifiedMem = new VerifiedMemorization({
+          user: req.user._id,
+          surahNumber,
+          surahName: surah.name,
+          surahEnglishName: surah.englishName,
+          juzNumber: currentJuz,
+          verses: { fromVerse: juzFromVerse, toVerse: juzToVerse },
+          verificationDate: new Date(),
+          averageRating: 5
+        });
+      }
+
+      await verifiedMem.save();
     }
 
-    await verifiedMem.save();
-    res.status(201).json(verifiedMem);
+    // Return all memorizations for this surah
+    const allMemorizations = await VerifiedMemorization.find({
+      user: req.user._id,
+      surahNumber
+    }).sort('juzNumber');
+
+    res.status(201).json(allMemorizations);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -104,10 +132,18 @@ exports.addMemorizedJuz = async (req, res) => {
         });
 
         if (verifiedMem) {
-          verifiedMem.verses = {
-            fromVerse: Math.min(verifiedMem.verses.fromVerse, fromVerse),
-            toVerse: Math.max(verifiedMem.verses.toVerse, toVerse)
-          };
+          // Only update if the new range extends the existing one
+          const newFromVerse = Math.min(verifiedMem.verses.fromVerse, fromVerse);
+          const newToVerse = Math.max(verifiedMem.verses.toVerse, toVerse);
+          
+          // Only update if there's a change
+          if (newFromVerse !== verifiedMem.verses.fromVerse || newToVerse !== verifiedMem.verses.toVerse) {
+            verifiedMem.verses = {
+              fromVerse: newFromVerse,
+              toVerse: newToVerse
+            };
+            await verifiedMem.save();
+          }
         } else {
           verifiedMem = new VerifiedMemorization({
             user: req.user._id,
@@ -119,9 +155,9 @@ exports.addMemorizedJuz = async (req, res) => {
             verificationDate: new Date(),
             averageRating: 5
           });
+          await verifiedMem.save();
         }
-
-        await verifiedMem.save();
+        
         verifiedMems.push(verifiedMem);
       }
       
@@ -157,6 +193,7 @@ exports.getAllMemorized = async (req, res) => {
         bySurah[mem.surahNumber] = {
           surahNumber: mem.surahNumber,
           surahName: mem.surahName,
+          surahEnglishName: mem.surahEnglishName,
           verses: [],
           lastRevisionDate: mem.lastRevisionDate,
           averageRating: mem.averageRating
@@ -177,10 +214,31 @@ exports.getAllMemorized = async (req, res) => {
         byJuz[mem.juzNumber].surahs[mem.surahNumber] = {
           surahNumber: mem.surahNumber,
           surahName: mem.surahName,
+          surahEnglishName: mem.surahEnglishName,
           verses: []
         };
       }
       byJuz[mem.juzNumber].surahs[mem.surahNumber].verses.push(mem.verses);
+    });
+
+    // Format verses as a single range string for each surah
+    Object.values(bySurah).forEach(surah => {
+      if (surah.verses.length > 0) {
+        const minVerse = Math.min(...surah.verses.map(v => v.fromVerse));
+        const maxVerse = Math.max(...surah.verses.map(v => v.toVerse));
+        surah.verses = `${minVerse} - ${maxVerse}`;
+      }
+    });
+
+    // Format verses as a single range string for each surah in juz
+    Object.values(byJuz).forEach(juz => {
+      Object.values(juz.surahs).forEach(surah => {
+        if (surah.verses.length > 0) {
+          const minVerse = Math.min(...surah.verses.map(v => v.fromVerse));
+          const maxVerse = Math.max(...surah.verses.map(v => v.toVerse));
+          surah.verses = `${minVerse} - ${maxVerse}`;
+        }
+      });
     });
 
     res.json({
