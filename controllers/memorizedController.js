@@ -6,7 +6,6 @@ const jwt = require('jsonwebtoken');
 exports.addMemorizedSurah = async (req, res) => {
   try {
     const { surahNumber, fromVerse, toVerse } = req.body;
-    console.log(surahNumber, fromVerse, toVerse);
 
     // Validate surah and verses
     const surah = await Surah.findOne({ number: surahNumber });
@@ -252,10 +251,13 @@ exports.getAllMemorized = async (req, res) => {
 
 // Update memorized surah verses
 exports.updateMemorizedSurahVerses = async (req, res) => {
+  kkk
  try {
   const { surahNumber} =req.params;
   const { verses } = req.body;
-  const memorized = await VerifiedMemorization.findOneAndUpdate({ surahNumber, user: req.user._id }, { verses });
+  const memorized = await VerifiedMemorization.findOneAndUpdate({ surahNumber, user: req.user._id }, { 
+
+ });
   res.json(memorized);
  } catch (error) {
   res.status(400).json({ error: error.message });
