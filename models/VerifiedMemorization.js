@@ -15,6 +15,10 @@ const verifiedMemorizationSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  surahEnglishName: {
+    type: String,
+    required: true
+  },
   // For Juz-based organization
   juzNumber: {
     type: Number,
