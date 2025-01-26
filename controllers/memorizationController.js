@@ -464,12 +464,13 @@ exports.getCompletedMemorization = async (req, res) => {
 };
 
 // Add this new function to get all completed memorizations
-exports.getAllCompletedMemorizations = async (req, res) => {
+exports.countCompletedMemorization = async (req, res) => {
   try {
-    const memorizations = await MemorizationEntry.find({
+    // return count of completed memorizations
+      const memorizations = await MemorizationEntry.countDocuments({
       user: req.user._id,
       status: "completed",
-    }).sort({ completedAt: -1 }); // Get the most recent first
+    });
 
     res.json(memorizations);
   } catch (error) {
