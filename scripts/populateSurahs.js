@@ -919,7 +919,7 @@ const surahData = [
 
 async function populateSurahs() {
   try {
-    await mongoose.connect(process.env.MONGODB_URI);
+    await mongoose.connect("mongodb://localhost:27017/mrj");
     await Surah.deleteMany({}); // Clear existing data
     await Surah.insertMany(surahData);
     console.log('Surah data populated successfully');
