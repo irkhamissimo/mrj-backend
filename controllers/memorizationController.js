@@ -63,11 +63,15 @@ exports.startMemorization = async (req, res) => {
 exports.startNewSession = async (req, res) => {
   try {
     const { entryId } = req.params;
+    const dateNow = new Date();
+    const localDateNow = new Date(dateNow.toLocaleString());
+    const dateOnly = new Date(localDateNow.getFullYear(), localDateNow.getMonth(), localDateNow.getDate());
 
     // First, check and complete any active sessions that have passed 25 minutes
     const activeSession = await MemorizationSession.findOne({
       memorizationEntry: entryId,
       completed: false,
+      startTime: { $gte: dateOnly },
     });
 
     if (activeSession) {
@@ -95,6 +99,7 @@ exports.startNewSession = async (req, res) => {
     const existingSessions = await MemorizationSession.countDocuments({
       memorizationEntry: entryId,
       completed: true,
+      startTime: { $gte: dateOnly },
     });
 
     if (existingSessions >= 4) {
