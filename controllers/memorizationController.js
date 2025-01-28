@@ -500,7 +500,11 @@ exports.getMemorizationByDateStarted = async (req, res) => {
     const dateNow = new Date();
     const localDateNow = new Date(dateNow.toLocaleString());
     const dateOnly = new Date(localDateNow.getFullYear(), localDateNow.getMonth(), localDateNow.getDate());
-    const memorizations = await MemorizationEntry.find({ dateStarted: { $gte: dateOnly } });
+
+    // Find memorization entries that match today's date
+    const memorizations = await MemorizationEntry.find({
+      dateStarted: { $gte: dateOnly, $lt: new Date(dateOnly.getTime() + 24 * 60 * 60 * 1000) } // Ensure it falls within the same day
+    });
     
     const memorizationsWithSurahEnglishName = memorizations.map((memorization) => ({
       surahNumber: memorization.surahNumber,
@@ -509,6 +513,7 @@ exports.getMemorizationByDateStarted = async (req, res) => {
       toVerse: memorization.toVerse,
       status: memorization.status,
       totalSessionsCompleted: memorization.totalSessionsCompleted,
+      dateStarted: memorization.dateStarted // Include dateStarted for comparison
     }));
     res.json(memorizationsWithSurahEnglishName);
   } catch (error) {
