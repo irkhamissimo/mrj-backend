@@ -14,6 +14,10 @@ const temporaryVaultSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  surahEnglishName: {
+    type: String,
+    required: false
+  },
   verses: [{
     fromVerse: {
       type: Number,
