@@ -507,6 +507,7 @@ exports.getMemorizationByDateStarted = async (req, res) => {
     });
     
     const memorizationsWithSurahEnglishName = memorizations.map((memorization) => ({
+      _id: memorization._id,
       surahNumber: memorization.surahNumber,
       surahEnglishName: memorization.surahEnglishName,
       fromVerse: memorization.fromVerse,
