@@ -42,6 +42,7 @@ exports.addToVault = async (req, res) => {
         user: req.user._id,
         surahNumber,
         surahName: surah.name,
+        surahEnglishName: surah.englishName,
         verses: [{
           fromVerse,
           toVerse,
