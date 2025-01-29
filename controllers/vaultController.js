@@ -107,6 +107,7 @@ exports.verifyAndTransfer = async (req, res) => {
         user: vaultEntry.user,
         surahNumber: vaultEntry.surahNumber,
         surahName: vaultEntry.surahName,
+        surahEnglishName: vaultEntry.surahEnglishName,
         juzNumber,
         verses: vaultEntry.consolidatedVerses,
         verificationDate: new Date()
