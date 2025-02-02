@@ -8,8 +8,23 @@ require("dotenv").config();
 const app = express();
 const upload = multer();
 
-// Middleware
-app.use(cors());
+// CORS configuration
+const corsOptions = {
+  origin: [
+    'http://localhost:5173',  // Vite's default dev server
+    'https://nqx3lp4w-5173.asse.devtunnels.ms',  // VS Code frontend URL
+    'https://nqx3lp4w-5000.asse.devtunnels.ms',  // VS Code backend URL
+    process.env.FRONTEND_URL, // From environment variable
+  ].filter(Boolean), // Remove any undefined/null values
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  maxAge: 600 // Increase preflight cache to 10 minutes
+};
+
+// Apply CORS middleware before other middleware
+app.use(cors(corsOptions));
 
 app.use(
   helmet({
