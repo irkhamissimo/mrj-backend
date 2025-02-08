@@ -67,6 +67,9 @@ app.use('/api/memorized', memorizedRoutes);
 const menuRoutes = require('./routes/menuRoutes');
 app.use('/api/menu', menuRoutes);
 
+const statsRoutes = require('./routes/statsRoutes');
+app.use('/api/stats', statsRoutes);
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
