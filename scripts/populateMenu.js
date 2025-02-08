@@ -5,7 +5,7 @@ require('dotenv').config();
 const menuItems = [
   {
     title: 'Ziyadah',
-    path: '/memorization',
+    path: '/ziyadah',
     order: 1,
     isActive: true
   },
@@ -22,15 +22,9 @@ const menuItems = [
     isActive: true
   },
   {
-    title: 'Daftar Ziyadah',
-    path: '/revisions',
+    title: "Stats",
+    path: "/stats",
     order: 4,
-    isActive: true
-  },
-  {
-    title: "Murajaah Player",
-    path: "/murajaah/:type/:identifier",
-    order: 5,
     isActive: true
   }
 ];
