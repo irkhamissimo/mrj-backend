@@ -116,3 +116,13 @@ exports.refreshToken = async function (req, res) {
     return res.status(401).json({ message: "Invalid refresh token" });
   }
 };
+
+exports.logout = async function (req, res) {
+  try {
+    res.clearCookie("accessToken");
+    res.clearCookie("refreshToken");
+    res.status(200).json({ message: "Logout successful" });
+  } catch (error) {
+    res.status(500).json({ message: "Logout error", error: error.message });
+  }
+};
