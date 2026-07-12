@@ -67,6 +67,15 @@ exports.startNewSession = async (req, res) => {
     const localDateNow = new Date(dateNow.toLocaleString());
     const dateOnly = new Date(localDateNow.getFullYear(), localDateNow.getMonth(), localDateNow.getDate());
 
+    // Check if entry exists and is not completed
+    const entry = await MemorizationEntry.findById(entryId);
+    if (!entry) {
+      throw new Error("Memorization entry not found");
+    }
+    if (entry.status === "completed") {
+      throw new Error("Cannot start a new session on a completed memorization entry");
+    }
+
     // First, check and complete any active sessions that have passed 25 minutes
     const activeSession = await MemorizationSession.findOne({
       memorizationEntry: entryId,
@@ -87,7 +96,6 @@ exports.startNewSession = async (req, res) => {
         await activeSession.save();
 
         // Update the memorization entry
-        const entry = await MemorizationEntry.findById(entryId);
         entry.totalSessionsCompleted += 1;
         await entry.save();
       } else if (!activeSession.isPaused) {
