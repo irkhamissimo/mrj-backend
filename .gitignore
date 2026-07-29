@@ -34,5 +34,8 @@ coverage/
 *.tgz
 *.zip
 
+# Command Code session data
+.commandcode/
+
 # package-lock.json
 package-lock.json

@@ -154,8 +154,12 @@ exports.finishMemorization = async (req, res) => {
       completed: true,
     });
 
-    // Calculate total time
-    const totalTimeInMinutes = completedSessions.length * 25;
+    // Calculate total time from actual session durations
+    const totalTimeInMinutes = completedSessions.reduce((total, s) => {
+      if (!s.endTime || !s.startTime) return total;
+      const elapsed = (s.endTime - s.startTime) / (1000 * 60); // minutes
+      return total + Math.max(0, elapsed - (s.totalPauseDuration || 0));
+    }, 0);
 
     // Update the entry status
     entry.status = "completed";
@@ -295,9 +299,7 @@ exports.checkSessionStatus = async (req, res) => {
     const elapsedTime = (now - startTime) / 1000; // Changed to seconds
     const actualDuration = elapsedTime - (session.totalPauseDuration || 0) * 60; // Convert pause duration to seconds
 
-    // For testing: 25 seconds instead of 25 minutes
-    if (actualDuration >= 25 && !session.isPaused) {
-      // Changed from session.duration to 25 seconds
+    if (actualDuration >= session.duration * 60 && !session.isPaused) {
       session.completed = true;
       session.endTime = now;
       await session.save();
