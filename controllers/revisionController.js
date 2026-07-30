@@ -154,7 +154,7 @@ exports.checkSessionStatus = async (req, res) => {
     const actualDuration = elapsedTime - (session.totalPauseDuration || 0) * 60; // Convert pause duration to seconds
 
     // Check if session should be completed
-    if (actualDuration >= 25 && !session.isPaused) {
+    if (actualDuration >= session.duration * 60 && !session.isPaused) {
       session.completed = true;
       session.endTime = now;
       await session.save();
