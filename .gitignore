@@ -37,5 +37,8 @@ coverage/
 # Command Code session data
 .commandcode/
 
+# Local MongoDB data
+mongodb/
+
 # package-lock.json
 package-lock.json

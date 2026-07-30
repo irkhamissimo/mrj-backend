@@ -17,6 +17,8 @@ const corsOptions = {
       "https://nqx3lp4w-5000.asse.devtunnels.ms", // VS Code backend URL
       process.env.FRONTEND_URL, // From environment variable
       "https://hafiz-app.netlify.app", // Production frontend
+      "https://murojaah.online", // Production frontend
+      "https://www.murojaah.online", // Production frontend www
     ].filter(Boolean);
     
     // Allow requests with no origin (like mobile apps or curl requests)
