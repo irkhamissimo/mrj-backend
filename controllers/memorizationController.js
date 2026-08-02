@@ -78,6 +78,7 @@ exports.startNewSession = async (req, res) => {
 
     // First, check and complete any active sessions that have passed 25 minutes
     const activeSession = await MemorizationSession.findOne({
+      user: req.user._id,
       memorizationEntry: entryId,
       completed: false,
       startTime: { $gte: dateOnly },
@@ -133,11 +134,12 @@ exports.finishMemorization = async (req, res) => {
     const { confidenceLevel, notes } = req.body;
 
     // Find the entry and its active session
-    const entry = await MemorizationEntry.findById(entryId);
+    const entry = await MemorizationEntry.findOne({ _id: entryId, user: req.user._id });
     if (!entry) throw new Error("Memorization entry not found");
 
     // Find and complete any active session
     const activeSession = await MemorizationSession.findOne({
+      user: req.user._id,
       memorizationEntry: entryId,
       completed: false,
     });
@@ -235,13 +237,12 @@ exports.getMemorizationProgress = async (req, res) => {
   try {
     const { entryId } = req.params;
 
-    const entry = await MemorizationEntry.findById(entryId).populate(
-      "sessions"
-    );
+    const entry = await MemorizationEntry.findOne({ _id: entryId, user: req.user._id });
 
     if (!entry) throw new Error("Memorization entry not found");
 
     const sessions = await MemorizationSession.find({
+      user: req.user._id,
       memorizationEntry: entryId,
     }).sort("startTime");
 
@@ -334,13 +335,14 @@ exports.startRevisionSession = async (req, res) => {
     }
 
     // Check if entry exists and is completed
-    const entry = await MemorizationEntry.findById(entryId);
+    const entry = await MemorizationEntry.findOne({ _id: entryId, user: req.user._id });
     if (!entry) throw new Error("Memorization entry not found");
     if (entry.status !== "completed")
       throw new Error("Cannot revise uncompleted memorization");
 
     // Check number of existing revision sessions
     const existingRevisions = await RevisionSession.countDocuments({
+      user: req.user._id,
       memorizationEntry: entryId,
     });
 
@@ -464,15 +466,16 @@ exports.checkRevisionStatus = async (req, res) => {
 };
 
 // get memorization that has been completed by entryId
-exports.getCompletedMemorization = async (req, res) => {
+exports.getCompletedMemorizationByEntryId = async (req, res) => {
   try {
     const { entryId } = req.params;
-    const memorizations = await MemorizationEntry.find({
-      status: "completed",
+    const memorization = await MemorizationEntry.findOne({
       _id: entryId,
+      user: req.user._id,
+      status: "completed",
     });
-    if (!memorizations) throw new Error("Memorization not found");
-    res.json(memorizations);
+    if (!memorization) throw new Error("Memorization not found");
+    res.json([memorization]);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -482,6 +485,7 @@ exports.getCompletedMemorization = async (req, res) => {
 exports.getCompletedMemorization = async (req, res) => {
   try {
     const memorizations = await MemorizationEntry.find({
+      user: req.user._id,
       status: "completed",
     });
     res.json(memorizations);
@@ -513,6 +517,7 @@ exports.getMemorizationByDateStarted = async (req, res) => {
 
     // Find memorization entries that match today's date
     const memorizations = await MemorizationEntry.find({
+      user: req.user._id,
       dateStarted: { $gte: dateOnly, $lt: new Date(dateOnly.getTime() + 24 * 60 * 60 * 1000) } // Ensure it falls within the same day
     });
     

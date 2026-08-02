@@ -1,5 +1,4 @@
 const TemporaryVault = require('../models/TemporaryVault');
-const MemorizationEntry = require('../models/MemorizationEntry');
 const Surah = require('../models/Surah');
 const VerifiedMemorization = require('../models/VerifiedMemorization');
 const { getJuzNumber } = require('../utils/quranHelpers');

@@ -1,7 +1,6 @@
 const VerifiedMemorization = require('../models/VerifiedMemorization');
 const Surah = require('../models/Surah');
 const { getJuzNumber, juzMap } = require('../utils/quranHelpers');
-const jwt = require('jsonwebtoken');
 // Add previously memorized surah
 exports.addMemorizedSurah = async (req, res) => {
   try {
@@ -175,9 +174,6 @@ exports.addMemorizedJuz = async (req, res) => {
 // Get all memorized content (both from verification and direct addition)
 exports.getAllMemorized = async (req, res) => {
   try {
-    // get token from header
-    const token = req.headers.authorization.split(' ')[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const memorized = await VerifiedMemorization.find({
       user: req.user._id
     }).sort({ surahNumber: 1, 'verses.fromVerse': 1 });
@@ -251,15 +247,24 @@ exports.getAllMemorized = async (req, res) => {
 
 // Update memorized surah verses
 exports.updateMemorizedSurahVerses = async (req, res) => {
-  kkk
- try {
-  const { surahNumber} =req.params;
-  const { verses } = req.body;
-  const memorized = await VerifiedMemorization.findOneAndUpdate({ surahNumber, user: req.user._id }, { 
+  try {
+    const { surahNumber } = req.params;
+    const { fromVerse, toVerse } = req.body;
 
- });
-  res.json(memorized);
- } catch (error) {
-  res.status(400).json({ error: error.message });
- }
+    if (!fromVerse || !toVerse || fromVerse < 1) {
+      throw new Error('Valid fromVerse and toVerse are required');
+    }
+    if (fromVerse > toVerse) {
+      throw new Error('fromVerse must be less than or equal to toVerse');
+    }
+
+    const result = await VerifiedMemorization.updateMany(
+      { surahNumber: parseInt(surahNumber), user: req.user._id },
+      { $set: { 'verses.fromVerse': fromVerse, 'verses.toVerse': toVerse } }
+    );
+
+    res.json({ message: 'Verses updated', modifiedCount: result.modifiedCount });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 };

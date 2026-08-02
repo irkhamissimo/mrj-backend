@@ -9,7 +9,7 @@ router.put('/:entryId/finish', auth, memorizationController.finishMemorization);
 router.get('/:entryId/progress', auth, memorizationController.getMemorizationProgress);
 router.put('/sessions/:sessionId/pause', auth, memorizationController.togglePauseSession);
 router.get('/sessions/:sessionId/status', auth, memorizationController.checkSessionStatus);
-router.get('/:entryId/completed', auth, memorizationController.getCompletedMemorization);
+router.get('/:entryId/completed', auth, memorizationController.getCompletedMemorizationByEntryId);
 router.get('/completedMemorizations', auth, memorizationController.getMemorizationByDateStarted);
 // Revision routes
 router.post('/:entryId/revisions', auth, memorizationController.startRevisionSession);

@@ -68,11 +68,10 @@ exports.getVerifiedByJuz = async (req, res) => {
 exports.startRevision = async (req, res) => {
   try {
     const { type, identifier, duration } = req.body; // type: 'surah' or 'juz', identifier: surahNumber or juzNumber
-    // make duration 25 seconds
 
     // Validate duration
-    if (duration !== 25) {
-      throw new Error('Invalid duration. Must be 25 minutes');
+    if (![10, 15, 20, 25].includes(duration)) {
+      throw new Error('Invalid duration. Must be 10, 15, 20, or 25 minutes');
     }
 
     let verifiedMems;
@@ -197,7 +196,7 @@ exports.countMurajaahSessions = async (req, res) => {
     const dateNow = new Date();
     const localDateNow = new Date(dateNow.toLocaleString());
     const dateOnly = new Date(localDateNow.getFullYear(), localDateNow.getMonth(), localDateNow.getDate());
-    const sessions = await MurajaahSession.find({startTime: { $gte: dateOnly } });
+    const sessions = await MurajaahSession.find({ user: req.user._id, startTime: { $gte: dateOnly } });
     
     const totalSessionsCompleted = sessions.filter(session => session.completed).length;
 
