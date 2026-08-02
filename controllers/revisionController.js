@@ -1,6 +1,7 @@
 const VerifiedMemorization = require('../models/VerifiedMemorization');
 const MurajaahSession = require('../models/MurajaahSession');
 const MemorizationEntry = require('../models/MemorizationEntry');
+const { awardPoints } = require('../utils/gamification');
 
 // Get verified memorizations by surah
 exports.getVerifiedBySurah = async (req, res) => {
@@ -166,6 +167,9 @@ exports.checkSessionStatus = async (req, res) => {
           await verifiedMem.save();
         }
       }
+
+      // Award gamification points for murajaah
+      awardPoints(session.user, 'murajaah', session.duration);
     }
 
     res.json({ session });

@@ -61,7 +61,17 @@ app.use(upload.none()); // For parsing multipart/form-data without file uploads
 // Connect to MongoDB
 mongoose
   .connect(process.env.MONGODB_URI)
-  .then(() => console.log("Connected to MongoDB"))
+  .then(async () => {
+    console.log("Connected to MongoDB");
+
+    // Ensure Leaderboard menu item exists
+    const Menu = require("./models/Menu");
+    const exists = await Menu.findOne({ path: "/leaderboard" });
+    if (!exists) {
+      await Menu.create({ title: "Leaderboard", path: "/leaderboard", order: 5 });
+      console.log("Leaderboard menu item created");
+    }
+  })
   .catch((err) => console.error("Could not connect to MongoDB:", err));
 
 app.use("/api/users", require("./routes/userRoutes"));
@@ -84,6 +94,9 @@ app.use("/api/menu", menuRoutes);
 
 const statsRoutes = require("./routes/statsRoutes");
 app.use("/api/stats", statsRoutes);
+
+const gamificationRoutes = require("./routes/gamificationRoutes");
+app.use("/api/gamification", gamificationRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

@@ -3,6 +3,7 @@ const MemorizationSession = require("../models/MemorizationSession");
 const RevisionSession = require("../models/RevisionSession");
 const Surah = require("../models/Surah");
 const TemporaryVault = require("../models/TemporaryVault");
+const { awardPoints } = require("../utils/gamification");
 
 // Start a new memorization entry
 exports.startMemorization = async (req, res) => {
@@ -309,6 +310,9 @@ exports.checkSessionStatus = async (req, res) => {
       const entry = await MemorizationEntry.findById(session.memorizationEntry);
       entry.totalSessionsCompleted += 1;
       await entry.save();
+
+      // Award gamification points for ziyadah
+      awardPoints(session.user, 'memorization', session.duration);
     }
 
     res.json({ session });
@@ -384,6 +388,9 @@ exports.completeRevisionSession = async (req, res) => {
       rating,
     });
     await entry.save();
+
+    // Award gamification points for revision
+    awardPoints(session.user, 'revision', session.duration);
 
     res.json({ session, entry });
   } catch (error) {

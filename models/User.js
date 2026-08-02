@@ -23,6 +23,21 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  streak: {
+    type: Number,
+    default: 0,
+  },
+  lastActiveDate: {
+    type: Date,
+  },
+  totalPoints: {
+    type: Number,
+    default: 0,
+  },
+  level: {
+    type: Number,
+    default: 0,
+  },
 });
 
 userSchema.pre("save", async function (next) {
