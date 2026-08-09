@@ -3,6 +3,42 @@ const MurajaahSession = require('../models/MurajaahSession');
 const MemorizationEntry = require('../models/MemorizationEntry');
 const { awardPoints } = require('../utils/gamification');
 
+// Helper to get the start of the current day in a specific timezone.
+// This is used so daily counters (like the murajaah session circles) reset
+// at the user's local midnight instead of the server's timezone.
+function getStartOfDay(timeZone = 'Asia/Jakarta') {
+  const now = new Date();
+
+  const dateFormatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const dateParts = dateFormatter.formatToParts(now);
+  const year = parseInt(dateParts.find((p) => p.type === 'year').value, 10);
+  const month = parseInt(dateParts.find((p) => p.type === 'month').value, 10);
+  const day = parseInt(dateParts.find((p) => p.type === 'day').value, 10);
+
+  const offsetFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    timeZoneName: 'longOffset',
+  });
+  const offsetParts = offsetFormatter.formatToParts(now);
+  const offsetName = offsetParts.find((p) => p.type === 'timeZoneName').value;
+  const match = offsetName.match(/GMT([+-])(\d{2}):(\d{2})/);
+  if (!match) {
+    return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+  }
+
+  const sign = match[1] === '+' ? 1 : -1;
+  const offsetMinutes = sign * (parseInt(match[2], 10) * 60 + parseInt(match[3], 10));
+
+  return new Date(
+    Date.UTC(year, month - 1, day, 0, 0, 0, 0) - offsetMinutes * 60 * 1000
+  );
+}
+
 // Get verified memorizations by surah
 exports.getVerifiedBySurah = async (req, res) => {
   try {
@@ -181,9 +217,7 @@ exports.checkSessionStatus = async (req, res) => {
 // Get memorized content
 exports.getMemorizedContent = async (req, res) => {
   try {
-    const dateNow = new Date();
-    const localDateNow = new Date(dateNow.toLocaleString());
-    const dateOnly = new Date(localDateNow.getFullYear(), localDateNow.getMonth(), localDateNow.getDate());
+    const dateOnly = getStartOfDay();
     const memorizedContent = await MemorizationEntry.find({ user: req.user._id, dateStarted: { $gte: dateOnly } });
 // get how many sessions completed
     const totalSessionsCompleted = memorizedContent.reduce((acc, mem) => acc + mem.totalSessionsCompleted, 0);  
@@ -197,9 +231,7 @@ exports.getMemorizedContent = async (req, res) => {
 // get murajaah sessions by date
 exports.countMurajaahSessions = async (req, res) => {
   try {
-    const dateNow = new Date();
-    const localDateNow = new Date(dateNow.toLocaleString());
-    const dateOnly = new Date(localDateNow.getFullYear(), localDateNow.getMonth(), localDateNow.getDate());
+    const dateOnly = getStartOfDay();
     const sessions = await MurajaahSession.find({ user: req.user._id, startTime: { $gte: dateOnly } });
     
     const totalSessionsCompleted = sessions.filter(session => session.completed).length;

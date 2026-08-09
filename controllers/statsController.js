@@ -2,6 +2,50 @@ const MemorizationSession = require('../models/MemorizationSession');
 const MurajaahSession = require('../models/MurajaahSession');
 const RevisionSession = require('../models/RevisionSession');
 
+// Get the calendar day (YYYY-MM-DD) for a Date in the given timezone
+function getDayKey(date, timeZone = 'Asia/Jakarta') {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
+// Get the start of the current day (as a Date) in the given timezone
+function getStartOfDay(timeZone = 'Asia/Jakarta') {
+  const now = new Date();
+  const dateFormatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = dateFormatter.formatToParts(now);
+  const year = parseInt(parts.find((p) => p.type === 'year').value, 10);
+  const month = parseInt(parts.find((p) => p.type === 'month').value, 10);
+  const day = parseInt(parts.find((p) => p.type === 'day').value, 10);
+
+  const offsetFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    timeZoneName: 'longOffset',
+  });
+  const offsetParts = offsetFormatter.formatToParts(now);
+  const offsetName = offsetParts.find((p) => p.type === 'timeZoneName').value;
+  const match = offsetName.match(/GMT([+-])(\d{2}):(\d{2})/);
+  if (!match) {
+    return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+  }
+
+  const sign = match[1] === '+' ? 1 : -1;
+  const offsetMinutes =
+    sign * (parseInt(match[2], 10) * 60 + parseInt(match[3], 10));
+
+  return new Date(
+    Date.UTC(year, month - 1, day, 0, 0, 0, 0) - offsetMinutes * 60 * 1000
+  );
+}
+
 /**
  * Helper function to determine the period's start and end dates.
  * @param {String} period - 'daily', 'weekly', or 'monthly'
@@ -113,12 +157,10 @@ exports.getStats = async (req, res) => {
 };
 
 /**
- * Helper function that aggregates sessions by a given date format.
- * The dateFormat parameter supports MongoDB date format strings, e.g.:
- *   - Daily: "%Y-%m-%d"
- *   - Monthly: "%Y-%m"
+ * Helper function that aggregates sessions by day, in the Asia/Jakarta timezone.
+ * Returns a map of "YYYY-MM-DD" -> total minutes.
  */
-async function aggregateByDate(Model, userId, start, end, dateFormat) {
+async function aggregateByDay(Model, userId, start, end) {
   const result = await Model.aggregate([
     {
       $match: {
@@ -129,7 +171,7 @@ async function aggregateByDate(Model, userId, start, end, dateFormat) {
     },
     {
       $group: {
-        _id: { $dateToString: { format: dateFormat, date: "$startTime" } },
+        _id: { $dateToString: { format: "%Y-%m-%d", date: "$startTime", timezone: "Asia/Jakarta" } },
         totalMinutes: { $sum: "$duration" }
       }
     }
@@ -150,39 +192,34 @@ async function aggregateByDate(Model, userId, start, end, dateFormat) {
  */
 exports.getDailyStats = async (req, res) => {
   try {
-    // If not provided, default to last 7 days.
+    // Default to the last 7 full days in the Asia/Jakarta timezone.
     const { startDate, endDate } = req.query;
-    const start = startDate ? new Date(startDate) : new Date(new Date().setDate(new Date().getDate() - 7));
-    const end = endDate ? new Date(endDate) : new Date();
+    const end = endDate
+      ? new Date(endDate)
+      : new Date(getStartOfDay().getTime() + 24 * 60 * 60 * 1000); // start of tomorrow (Jakarta)
+    const start = startDate
+      ? new Date(startDate)
+      : new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
     const userId = req.user._id;
 
-    // Using daily date format "%Y-%m-%d"
-    const memMap = await aggregateByDate(MemorizationSession, userId, start, end, "%Y-%m-%d");
-    const revisionMap = await aggregateByDate(RevisionSession, userId, start, end, "%Y-%m-%d");
-    const murajaahMap = await aggregateByDate(MurajaahSession, userId, start, end, "%Y-%m-%d");
+    const memMap = await aggregateByDay(MemorizationSession, userId, start, end);
+    const revisionMap = await aggregateByDay(RevisionSession, userId, start, end);
+    const murajaahMap = await aggregateByDay(MurajaahSession, userId, start, end);
 
-    const datesSet = new Set([
-      ...Object.keys(memMap),
-      ...Object.keys(revisionMap),
-      ...Object.keys(murajaahMap)
-    ]);
-
+    // Fill in all days in the range so the chart shows a complete 7-day window
     const dailyStats = [];
-    datesSet.forEach(date => {
-      const ziyadah = memMap[date] || 0;
-      const revision = revisionMap[date] || 0;
-      const murajaah = murajaahMap[date] || 0;
+    for (let i = 0; i < 7; i++) {
+      const dayStart = new Date(start.getTime() + i * 24 * 60 * 60 * 1000);
+      const date = getDayKey(dayStart);
       dailyStats.push({
         date,
-        ziyadah,
-        revision,
-        murajaah,
-        total: ziyadah + revision + murajaah
+        ziyadah: memMap[date] || 0,
+        revision: revisionMap[date] || 0,
+        murajaah: murajaahMap[date] || 0,
+        total:
+          (memMap[date] || 0) + (revisionMap[date] || 0) + (murajaahMap[date] || 0)
       });
-    });
-
-    // Sort by date (ascending)
-    dailyStats.sort((a, b) => new Date(a.date) - new Date(b.date));
+    }
 
     res.json({ dailyStats });
   } catch (error) {
@@ -204,22 +241,35 @@ exports.getMonthlyStats = async (req, res) => {
     const end = endDate ? new Date(endDate) : new Date();
     const userId = req.user._id;
 
-    // Using monthly date format "%Y-%m"
-    const memMap = await aggregateByDate(MemorizationSession, userId, start, end, "%Y-%m");
-    const revisionMap = await aggregateByDate(RevisionSession, userId, start, end, "%Y-%m");
-    const murajaahMap = await aggregateByDate(MurajaahSession, userId, start, end, "%Y-%m");
+    // Aggregate by Jakarta day, then collapse into "YYYY-MM" keys
+    const memMap = await aggregateByDay(MemorizationSession, userId, start, end);
+    const revisionMap = await aggregateByDay(RevisionSession, userId, start, end);
+    const murajaahMap = await aggregateByDay(MurajaahSession, userId, start, end);
+
+    const byMonth = (map) => {
+      const out = {};
+      Object.entries(map).forEach(([day, mins]) => {
+        const month = day.slice(0, 7); // "YYYY-MM-DD" -> "YYYY-MM"
+        out[month] = (out[month] || 0) + mins;
+      });
+      return out;
+    };
+
+    const memMonthMap = byMonth(memMap);
+    const revisionMonthMap = byMonth(revisionMap);
+    const murajaahMonthMap = byMonth(murajaahMap);
 
     const monthsSet = new Set([
-      ...Object.keys(memMap),
-      ...Object.keys(revisionMap),
-      ...Object.keys(murajaahMap)
+      ...Object.keys(memMonthMap),
+      ...Object.keys(revisionMonthMap),
+      ...Object.keys(murajaahMonthMap)
     ]);
 
     const monthlyStats = [];
     monthsSet.forEach(month => {
-      const ziyadah = memMap[month] || 0;
-      const revision = revisionMap[month] || 0;
-      const murajaah = murajaahMap[month] || 0;
+      const ziyadah = memMonthMap[month] || 0;
+      const revision = revisionMonthMap[month] || 0;
+      const murajaah = murajaahMonthMap[month] || 0;
       monthlyStats.push({
         month,
         ziyadah,
@@ -230,7 +280,7 @@ exports.getMonthlyStats = async (req, res) => {
     });
 
     // Sort by month (ascending)
-    monthlyStats.sort((a, b) => new Date(a.month) - new Date(b.month));
+    monthlyStats.sort((a, b) => a.month.localeCompare(b.month));
 
     res.json({ monthlyStats });
   } catch (error) {
@@ -239,8 +289,9 @@ exports.getMonthlyStats = async (req, res) => {
 };
 
 /**
- * Helper function that aggregates sessions by week using ISO week numbers.
- * Groups records by {isoWeekYear, isoWeek} and projects a string in the format "YYYY-W<week>".
+ * Helper function that aggregates sessions by ISO week.
+ * Groups by Jakarta day first, then collapses into ISO week numbers so late-evening
+ * sessions count toward the correct week.
  */
 async function aggregateByWeek(Model, userId, start, end) {
   const result = await Model.aggregate([
@@ -253,31 +304,25 @@ async function aggregateByWeek(Model, userId, start, end) {
     },
     {
       $group: {
-        _id: {
-          isoWeekYear: { $isoWeekYear: "$startTime" },
-          isoWeek: { $isoWeek: "$startTime" }
-        },
+        _id: { $dateToString: { format: "%Y-%m-%d", date: "$startTime", timezone: "Asia/Jakarta" } },
         totalMinutes: { $sum: "$duration" }
-      }
-    },
-    {
-      $project: {
-        week: {
-          $concat: [
-            { $toString: "$_id.isoWeekYear" },
-            "-W",
-            { $toString: "$_id.isoWeek" }
-          ]
-        },
-        totalMinutes: 1,
-        _id: 0
       }
     }
   ]);
 
   const map = {};
   result.forEach(item => {
-    map[item.week] = item.totalMinutes;
+    const [year, month, day] = item._id.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    // ISO week of the Jakarta calendar day
+    const utc = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+    const dayNum = (new Date(utc).getUTCDay() + 6) % 7; // Monday = 0
+    const weekStart = new Date(utc - dayNum * 86400000);
+    const weekYear = weekStart.getUTCFullYear();
+    const jan1 = new Date(Date.UTC(weekYear, 0, 1));
+    const weekNumber = Math.ceil(((weekStart - jan1) / 86400000 + 1) / 7);
+    const weekKey = `${weekYear}-W${weekNumber}`;
+    map[weekKey] = (map[weekKey] || 0) + item.totalMinutes;
   });
   return map;
 }

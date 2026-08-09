@@ -33,16 +33,27 @@ function getLevelInfo(totalPoints) {
   return { level: 0, title: 'Pemula' };
 }
 
+// Get the calendar day (YYYY-MM-DD) for a Date in the given timezone
+function getDayKey(date, timeZone = 'Asia/Jakarta') {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
 function updateUserStreak(user) {
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const todayKey = getDayKey(today);
 
   if (!user.lastActiveDate) {
     user.streak = 1;
   } else {
-    const lastDate = new Date(user.lastActiveDate);
-    lastDate.setHours(0, 0, 0, 0);
-    const dayDiff = Math.floor((today - lastDate) / (1000 * 60 * 60 * 24));
+    const lastKey = getDayKey(new Date(user.lastActiveDate));
+    const diffMs =
+      Date.parse(todayKey + 'T00:00:00Z') - Date.parse(lastKey + 'T00:00:00Z');
+    const dayDiff = Math.round(diffMs / (1000 * 60 * 60 * 24));
 
     if (dayDiff === 0) {
       return; // Already active today, don't change streak
