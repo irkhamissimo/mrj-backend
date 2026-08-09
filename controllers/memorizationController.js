@@ -233,6 +233,36 @@ exports.finishMemorization = async (req, res) => {
   }
 };
 
+// Get the user's current (in-progress) memorization entry and session
+exports.getCurrentMemorization = async (req, res) => {
+  try {
+    // Entry in progress today
+    const dateNow = new Date();
+    const localDateNow = new Date(dateNow.toLocaleString());
+    const dateOnly = new Date(localDateNow.getFullYear(), localDateNow.getMonth(), localDateNow.getDate());
+
+    const entry = await MemorizationEntry.findOne({
+      user: req.user._id,
+      status: "in_progress",
+      dateStarted: { $gte: dateOnly },
+    }).sort({ dateStarted: -1 });
+
+    if (!entry) {
+      return res.json({ entry: null, session: null });
+    }
+
+    const session = await MemorizationSession.findOne({
+      user: req.user._id,
+      memorizationEntry: entry._id,
+      completed: false,
+    }).sort({ startTime: -1 });
+
+    res.json({ entry, session });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
 // Get memorization progress
 exports.getMemorizationProgress = async (req, res) => {
   try {

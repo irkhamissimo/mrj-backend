@@ -11,6 +11,7 @@ router.get('/by-juz', auth, revisionController.getVerifiedByJuz);
 router.post('/start', auth, revisionController.startRevision);
 router.put('/:sessionId/pause', auth, revisionController.pauseRevision);
 router.get('/:sessionId/status', auth, revisionController.checkSessionStatus);
+router.get('/current', auth, revisionController.getCurrentRevision);
 router.get('/memorized', auth, revisionController.getMemorizedContent);
 router.get('/sessions', auth, revisionController.countMurajaahSessions);
 module.exports = router; 

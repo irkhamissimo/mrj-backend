@@ -214,6 +214,48 @@ exports.checkSessionStatus = async (req, res) => {
   }
 };
 
+// Get the user's current (in-progress) murajaah session, if any
+exports.getCurrentRevision = async (req, res) => {
+  try {
+    const session = await MurajaahSession.findOne({
+      user: req.user._id,
+      completed: false,
+    }).sort({ startTime: -1 });
+
+    if (!session) {
+      return res.json({ session: null });
+    }
+
+    // Reuse the same completion logic as checkSessionStatus so a session
+    // that finished while offline is marked complete here.
+    const now = new Date();
+    const startTime = new Date(session.startTime);
+    const elapsedTime = (now - startTime) / 1000;
+    const actualDuration = elapsedTime - (session.totalPauseDuration || 0) * 60;
+
+    if (actualDuration >= session.duration * 60 && !session.isPaused) {
+      session.completed = true;
+      session.endTime = now;
+      await session.save();
+
+      for (const memId of session.verifiedMemorizations) {
+        const verifiedMem = await VerifiedMemorization.findById(memId);
+        if (verifiedMem) {
+          verifiedMem.lastRevisionDate = now;
+          await verifiedMem.save();
+        }
+      }
+
+      awardPoints(session.user, 'murajaah', session.duration);
+      return res.json({ session });
+    }
+
+    res.json({ session });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
 // Get memorized content
 exports.getMemorizedContent = async (req, res) => {
   try {
