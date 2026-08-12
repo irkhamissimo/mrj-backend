@@ -247,10 +247,14 @@ exports.getCurrentRevision = async (req, res) => {
       }
 
       awardPoints(session.user, 'murajaah', session.duration);
-      return res.json({ session });
+      return res.json({ session, verifiedMemorizations: [] });
     }
 
-    res.json({ session });
+    const verifiedMemorizations = await VerifiedMemorization.find({
+      _id: { $in: session.verifiedMemorizations },
+    });
+
+    res.json({ session, verifiedMemorizations });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
