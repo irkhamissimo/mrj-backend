@@ -13,5 +13,7 @@ router.get('/', auth, statsController.getStats);
 router.get('/daily-breakdown', auth, statsController.getDailyStats);
 router.get('/weekly-breakdown', auth, statsController.getWeeklyStats);
 router.get('/monthly-breakdown', auth, statsController.getMonthlyStats);
+router.get('/activity/summary', auth, statsController.getActivitySummary);
+router.get('/activity', auth, statsController.getActivityDetail);
 
 module.exports = router; 

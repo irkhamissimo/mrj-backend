@@ -1,6 +1,7 @@
 const MemorizationSession = require('../models/MemorizationSession');
 const MurajaahSession = require('../models/MurajaahSession');
 const RevisionSession = require('../models/RevisionSession');
+const MemorizationEntry = require('../models/MemorizationEntry');
 
 // Get the calendar day (YYYY-MM-DD) for a Date in the given timezone
 function getDayKey(date, timeZone = 'Asia/Jakarta') {
@@ -371,4 +372,156 @@ exports.getWeeklyStats = async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
-}; 
+};
+
+/**
+ * GET /stats/activity/summary?days=14
+ *
+ * Returns a per-day activity summary for the last N days (default 14) in the
+ * Asia/Jakarta timezone. Powers the date-selector strip in the frontend.
+ */
+exports.getActivitySummary = async (req, res) => {
+  try {
+    const days = Math.min(parseInt(req.query.days, 10) || 14, 90);
+    const userId = req.user._id;
+    const end = new Date(getStartOfDay().getTime() + 24 * 60 * 60 * 1000);
+    const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
+
+    const memMap = await aggregateByDay(MemorizationSession, userId, start, end);
+    const revisionMap = await aggregateByDay(RevisionSession, userId, start, end);
+    const murajaahMap = await aggregateByDay(MurajaahSession, userId, start, end);
+
+    const completedEntries = await MemorizationEntry.find({
+      user: userId,
+      dateCompleted: { $gte: start, $lt: end },
+    });
+
+    const completedByDay = {};
+    completedEntries.forEach((entry) => {
+      const day = getDayKey(new Date(entry.dateCompleted));
+      completedByDay[day] = (completedByDay[day] || 0) + 1;
+    });
+
+    const daysResult = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const dayStart = new Date(end.getTime() - (i + 1) * 24 * 60 * 60 * 1000);
+      const date = getDayKey(dayStart);
+      const ziyadah = memMap[date] || 0;
+      const revision = revisionMap[date] || 0;
+      const murajaah = murajaahMap[date] || 0;
+      daysResult.push({
+        date,
+        ziyadah,
+        revision,
+        murajaah,
+        completedMemorizations: completedByDay[date] || 0,
+        totalMinutes: ziyadah + revision + murajaah,
+      });
+    }
+
+    res.json({ days: daysResult });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * GET /stats/activity?date=YYYY-MM-DD
+ *
+ * Returns every completed session and completed memorization entry for the
+ * given Jakarta calendar day.
+ */
+exports.getActivityDetail = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const dateStr = req.query.date || getDayKey(new Date());
+    // "YYYY-MM-DDT00:00:00+07:00" is exactly Jakarta midnight.
+    const start = new Date(`${dateStr}T00:00:00+07:00`);
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+
+    const [memSessions, murajaahSessions, revisionSessions, completedEntries] =
+      await Promise.all([
+        MemorizationSession.find({
+          user: userId,
+          completed: true,
+          startTime: { $gte: start, $lt: end },
+        }).populate('memorizationEntry'),
+        MurajaahSession.find({
+          user: userId,
+          completed: true,
+          startTime: { $gte: start, $lt: end },
+        }).populate('verifiedMemorizations'),
+        RevisionSession.find({
+          user: userId,
+          completed: true,
+          startTime: { $gte: start, $lt: end },
+        }).populate('memorizationEntry'),
+        MemorizationEntry.find({
+          user: userId,
+          dateCompleted: { $gte: start, $lt: end },
+        }),
+      ]);
+
+    const timeFormatter = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Jakarta',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+
+    const sessions = [];
+
+    memSessions.forEach((session) => {
+      const entry = session.memorizationEntry;
+      if (!entry) return;
+      sessions.push({
+        type: 'ziyadah',
+        title: `${entry.surahEnglishName}: ${entry.fromVerse}-${entry.toVerse}`,
+        subtitle: 'Hafalan Baru',
+        duration: session.duration,
+        time: timeFormatter.format(new Date(session.endTime || session.startTime)),
+      });
+    });
+
+    murajaahSessions.forEach((session) => {
+      const mems = session.verifiedMemorizations || [];
+      const first = mems[0];
+      const juzNumbers = [...new Set(mems.map((m) => m.juzNumber))];
+      sessions.push({
+        type: 'murajaah',
+        title: first
+          ? `${first.surahEnglishName}: ${first.verses.fromVerse}-${first.verses.toVerse}`
+          : 'Murajaah',
+        subtitle: juzNumbers.length === 1 ? `Juz ${juzNumbers[0]}` : 'Murajaah',
+        duration: session.duration,
+        time: timeFormatter.format(new Date(session.endTime || session.startTime)),
+      });
+    });
+
+    revisionSessions.forEach((session) => {
+      const entry = session.memorizationEntry;
+      if (!entry) return;
+      sessions.push({
+        type: 'revision',
+        title: `${entry.surahEnglishName}: ${entry.fromVerse}-${entry.toVerse}`,
+        subtitle: 'Revisi',
+        duration: session.duration,
+        time: timeFormatter.format(new Date(session.endTime || session.startTime)),
+        rating: session.rating,
+      });
+    });
+
+    sessions.sort((a, b) => (a.time < b.time ? -1 : 1));
+
+    const completedMemorizations = completedEntries.map((entry) => ({
+      title: `${entry.surahEnglishName}: ${entry.fromVerse}-${entry.toVerse}`,
+      time: timeFormatter.format(new Date(entry.dateCompleted)),
+    }));
+
+    const totalMinutes = sessions.reduce((acc, s) => acc + (s.duration || 0), 0);
+
+    res.json({ date: dateStr, totalMinutes, sessions, completedMemorizations });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
