@@ -10,7 +10,7 @@ const menuItems = [
     isActive: true
   },
   {
-    title: 'Hafalan Belum Disetor',
+    title: 'Belum Disetor',
     path: '/vault',
     order: 2,
     isActive: true
