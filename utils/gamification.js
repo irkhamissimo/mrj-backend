@@ -6,7 +6,21 @@ const POINTS_PER_MINUTE = {
   murajaah: 1,
 };
 
-const STREAK_BONUS = 10;
+// Awarded for the first completed activity of the day.
+const DAILY_LOGGING_BONUS = 5;
+
+// A day only counts as "logged" if the first activity lasts at least this long.
+const MIN_LOGGING_DURATION = 10;
+
+// Streak milestone bonuses. Every +30 days after 90 awards 250.
+const STREAK_MILESTONES = {
+  7: 20,
+  14: 40,
+  21: 60,
+  30: 100,
+  60: 250,
+  90: 500,
+};
 
 const LEVELS = [
   { minPoints: 0, title: 'Pemula' },
@@ -22,6 +36,12 @@ const LEVELS = [
 function calculatePoints(type, durationMinutes) {
   const rate = POINTS_PER_MINUTE[type] || 0;
   return Math.round(durationMinutes * rate);
+}
+
+function getStreakMilestoneBonus(streak) {
+  if (STREAK_MILESTONES[streak]) return STREAK_MILESTONES[streak];
+  if (streak > 90 && (streak - 90) % 30 === 0) return 250;
+  return 0;
 }
 
 function getLevelInfo(totalPoints) {
@@ -47,6 +67,9 @@ function updateUserStreak(user) {
   const today = new Date();
   const todayKey = getDayKey(today);
 
+  let isNewDay = true;
+  let streakBonus = 0;
+
   if (!user.lastActiveDate) {
     user.streak = 1;
   } else {
@@ -56,13 +79,10 @@ function updateUserStreak(user) {
     const dayDiff = Math.round(diffMs / (1000 * 60 * 60 * 24));
 
     if (dayDiff === 0) {
-      return; // Already active today, don't change streak
+      isNewDay = false; // Already active today
     } else if (dayDiff === 1) {
       user.streak += 1;
-      // Award bonus every 7 days
-      if (user.streak > 0 && user.streak % 7 === 0) {
-        user.totalPoints += STREAK_BONUS;
-      }
+      streakBonus = getStreakMilestoneBonus(user.streak);
     } else {
       // Streak broken, reset
       user.streak = 1;
@@ -70,6 +90,7 @@ function updateUserStreak(user) {
   }
 
   user.lastActiveDate = today;
+  return { isNewDay, streakBonus };
 }
 
 async function awardPoints(userId, type, durationMinutes) {
@@ -78,8 +99,14 @@ async function awardPoints(userId, type, durationMinutes) {
     if (!user) return;
 
     const points = calculatePoints(type, durationMinutes);
-    updateUserStreak(user);
-    user.totalPoints += points;
+    const { isNewDay, streakBonus } = updateUserStreak(user);
+
+    let bonus = streakBonus;
+    if (isNewDay && durationMinutes >= MIN_LOGGING_DURATION) {
+      bonus += DAILY_LOGGING_BONUS;
+    }
+
+    user.totalPoints += points + bonus;
 
     const { level, title } = getLevelInfo(user.totalPoints);
     user.level = level;
@@ -92,9 +119,12 @@ async function awardPoints(userId, type, durationMinutes) {
 
 module.exports = {
   POINTS_PER_MINUTE,
-  STREAK_BONUS,
+  DAILY_LOGGING_BONUS,
+  MIN_LOGGING_DURATION,
+  STREAK_MILESTONES,
   LEVELS,
   calculatePoints,
+  getStreakMilestoneBonus,
   getLevelInfo,
   updateUserStreak,
   awardPoints,
