@@ -27,6 +27,12 @@ const murajaahSessionSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  // Set when an incomplete session is left over from a previous day so it no
+  // longer surfaces as the active session after the daily reset.
+  abandoned: {
+    type: Boolean,
+    default: false
+  },
   isPaused: {
     type: Boolean,
     default: false

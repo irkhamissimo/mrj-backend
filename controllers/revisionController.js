@@ -180,7 +180,17 @@ exports.checkSessionStatus = async (req, res) => {
     const { sessionId } = req.params;
     const session = await MurajaahSession.findById(sessionId);
 
-    if (!session || session.completed) {
+    if (!session) {
+      return res.json({ session });
+    }
+
+    // A leftover session from a previous day is treated as finished so any
+    // open client clears it, without marking it completed in the database.
+    if (session.abandoned) {
+      return res.json({ session: { ...session.toObject(), completed: true } });
+    }
+
+    if (session.completed) {
       return res.json({ session });
     }
 
@@ -217,9 +227,25 @@ exports.checkSessionStatus = async (req, res) => {
 // Get the user's current (in-progress) murajaah session, if any
 exports.getCurrentRevision = async (req, res) => {
   try {
+    const startOfToday = getStartOfDay();
+
+    // Abandon any incomplete sessions left over from previous days so they
+    // don't resurface as the active session after the daily reset.
+    // Use $ne: true so legacy sessions missing the field are still matched.
+    await MurajaahSession.updateMany(
+      {
+        user: req.user._id,
+        completed: false,
+        abandoned: { $ne: true },
+        startTime: { $lt: startOfToday },
+      },
+      { $set: { abandoned: true } }
+    );
+
     const session = await MurajaahSession.findOne({
       user: req.user._id,
       completed: false,
+      abandoned: { $ne: true },
     }).sort({ startTime: -1 });
 
     if (!session) {
