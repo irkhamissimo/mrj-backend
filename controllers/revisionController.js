@@ -134,6 +134,8 @@ exports.startRevision = async (req, res) => {
     const session = await MurajaahSession.create({
       user: req.user._id,
       duration,
+      revisionType: type,
+      revisionIdentifier: identifier,
       verifiedMemorizations: verifiedMems.map(mem => mem._id)
     });
 

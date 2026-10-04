@@ -483,15 +483,35 @@ exports.getActivityDetail = async (req, res) => {
       });
     });
 
+    const formatSurahTitle = (mems) => {
+      const first = mems[0];
+      const surahName = first.surahEnglishName || first.surahName;
+      const fromVerse = Math.min(...mems.map((m) => m.verses.fromVerse));
+      const toVerse = Math.max(...mems.map((m) => m.verses.toVerse));
+      return `${surahName}: ${fromVerse}-${toVerse}`;
+    };
+
     murajaahSessions.forEach((session) => {
       const mems = session.verifiedMemorizations || [];
-      const first = mems[0];
       const juzNumbers = [...new Set(mems.map((m) => m.juzNumber))];
+      const surahNumbers = [...new Set(mems.map((m) => m.surahNumber))];
+
+      let title = 'Murajaah';
+      if (session.revisionType === 'juz' && session.revisionIdentifier) {
+        title = `Juz ${session.revisionIdentifier}`;
+      } else if (session.revisionType === 'surah' && mems.length) {
+        title = formatSurahTitle(mems);
+      } else if (mems.length && juzNumbers.length === 1 && surahNumbers.length > 1) {
+        // Fallback for sessions created before the selection was persisted:
+        // a juz-based session spans multiple surahs within a single juz.
+        title = `Juz ${juzNumbers[0]}`;
+      } else if (surahNumbers.length === 1) {
+        title = formatSurahTitle(mems);
+      }
+
       sessions.push({
         type: 'murajaah',
-        title: first
-          ? `${first.surahEnglishName}: ${first.verses.fromVerse}-${first.verses.toVerse}`
-          : 'Murajaah',
+        title,
         subtitle: juzNumbers.length === 1 ? `Juz ${juzNumbers[0]}` : 'Murajaah',
         duration: session.duration,
         time: timeFormatter.format(new Date(session.endTime || session.startTime)),
