@@ -38,6 +38,19 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  role: {
+    type: String,
+    enum: ["learner", "teacher"],
+    default: "learner",
+  },
+  assignedStudents: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+  }],
+  refreshTokenHash: {
+    type: String,
+    select: false,
+  },
 });
 
 userSchema.pre("save", async function (next) {

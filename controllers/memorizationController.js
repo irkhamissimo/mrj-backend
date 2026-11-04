@@ -8,7 +8,9 @@ const { awardPoints } = require("../utils/gamification");
 // Start a new memorization entry
 exports.startMemorization = async (req, res) => {
   try {
-    const { surahNumber, fromVerse, toVerse } = req.body;
+    const surahNumber = Number(req.body.surahNumber);
+    const fromVerse = Number(req.body.fromVerse);
+    const toVerse = Number(req.body.toVerse);
 
     // Get surah details to validate
     const surah = await Surah.findOne({ number: surahNumber });
@@ -17,7 +19,7 @@ exports.startMemorization = async (req, res) => {
     }
 
     // Validate verse numbers
-    if (fromVerse < 1 || toVerse > surah.numberOfAyahs) {
+    if (!Number.isInteger(fromVerse) || !Number.isInteger(toVerse) || fromVerse < 1 || toVerse > surah.numberOfAyahs) {
       throw new Error(
         `Verse numbers must be between 1 and ${surah.numberOfAyahs}`
       );
@@ -69,7 +71,7 @@ exports.startNewSession = async (req, res) => {
     const dateOnly = new Date(localDateNow.getFullYear(), localDateNow.getMonth(), localDateNow.getDate());
 
     // Check if entry exists and is not completed
-    const entry = await MemorizationEntry.findById(entryId);
+    const entry = await MemorizationEntry.findOne({ _id: entryId, user: req.user._id });
     if (!entry) {
       throw new Error("Memorization entry not found");
     }
@@ -107,6 +109,7 @@ exports.startNewSession = async (req, res) => {
 
     // Count completed sessions
     const existingSessions = await MemorizationSession.countDocuments({
+      user: req.user._id,
       memorizationEntry: entryId,
       completed: true,
       startTime: { $gte: dateOnly },
@@ -153,6 +156,7 @@ exports.finishMemorization = async (req, res) => {
 
     // Get all completed sessions for this entry
     const completedSessions = await MemorizationSession.find({
+      user: req.user._id,
       memorizationEntry: entryId,
       completed: true,
     });
@@ -292,7 +296,7 @@ exports.getMemorizationProgress = async (req, res) => {
 exports.togglePauseSession = async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const session = await MemorizationSession.findById(sessionId);
+    const session = await MemorizationSession.findOne({ _id: sessionId, user: req.user._id });
 
     if (!session) throw new Error("Session not found");
 
@@ -320,7 +324,7 @@ exports.togglePauseSession = async (req, res) => {
 exports.checkSessionStatus = async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const session = await MemorizationSession.findById(sessionId);
+    const session = await MemorizationSession.findOne({ _id: sessionId, user: req.user._id });
 
     if (!session || session.completed) {
       return res.json({ session });
@@ -332,17 +336,26 @@ exports.checkSessionStatus = async (req, res) => {
     const actualDuration = elapsedTime - (session.totalPauseDuration || 0) * 60; // Convert pause duration to seconds
 
     if (actualDuration >= session.duration * 60 && !session.isPaused) {
-      session.completed = true;
-      session.endTime = now;
-      await session.save();
+      const completedSession = await MemorizationSession.findOneAndUpdate(
+        { _id: session._id, user: req.user._id, completed: false },
+        { $set: { completed: true, endTime: now } },
+        { new: true }
+      );
+      if (!completedSession) return res.json({ session });
 
       // Update the memorization entry
-      const entry = await MemorizationEntry.findById(session.memorizationEntry);
-      entry.totalSessionsCompleted += 1;
-      await entry.save();
+      const entry = await MemorizationEntry.findOne({
+        _id: session.memorizationEntry,
+        user: req.user._id,
+      });
+      if (entry) {
+        entry.totalSessionsCompleted += 1;
+        await entry.save();
+      }
 
       // Award gamification points for ziyadah
-      awardPoints(session.user, 'memorization', session.duration);
+      await awardPoints(session.user, 'memorization', session.duration);
+      return res.json({ session: completedSession });
     }
 
     res.json({ session });
@@ -403,7 +416,7 @@ exports.completeRevisionSession = async (req, res) => {
     const { sessionId } = req.params;
     const { rating } = req.body;
 
-    const session = await RevisionSession.findById(sessionId);
+    const session = await RevisionSession.findOne({ _id: sessionId, user: req.user._id });
     if (!session) throw new Error("Revision session not found");
 
     session.endTime = new Date();
@@ -412,7 +425,11 @@ exports.completeRevisionSession = async (req, res) => {
     await session.save();
 
     // Update the memorization entry's reviewDates
-    const entry = await MemorizationEntry.findById(session.memorizationEntry);
+    const entry = await MemorizationEntry.findOne({
+      _id: session.memorizationEntry,
+      user: req.user._id,
+    });
+    if (!entry) throw new Error("Memorization entry not found");
     entry.reviewDates.push({
       date: new Date(),
       rating,
@@ -432,7 +449,7 @@ exports.completeRevisionSession = async (req, res) => {
 exports.toggleRevisionPause = async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const session = await RevisionSession.findById(sessionId);
+    const session = await RevisionSession.findOne({ _id: sessionId, user: req.user._id });
 
     if (!session) throw new Error("Revision session not found");
 
@@ -462,6 +479,7 @@ exports.getRevisionSessions = async (req, res) => {
     const { entryId } = req.params;
 
     const revisionSessions = await RevisionSession.find({
+      user: req.user._id,
       memorizationEntry: entryId,
     }).sort("startTime");
 
@@ -479,7 +497,7 @@ exports.getRevisionSessions = async (req, res) => {
 exports.checkRevisionStatus = async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const session = await RevisionSession.findById(sessionId);
+    const session = await RevisionSession.findOne({ _id: sessionId, user: req.user._id });
 
     if (!session || session.completed) {
       return res.json({ session });

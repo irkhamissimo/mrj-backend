@@ -2,6 +2,9 @@
 const User = require("../models/User");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
+
+const hashToken = (token) => crypto.createHash("sha256").update(token).digest("hex");
 
 const generateTokens = (userId) => {
   const accessToken = jwt.sign({ id: userId }, process.env.JWT_SECRET, {
@@ -38,6 +41,8 @@ exports.register = async function (req, res) {
 
     const savedUser = await newUser.save();
     const tokens = generateTokens(savedUser._id);
+    savedUser.refreshTokenHash = hashToken(tokens.refreshToken);
+    await savedUser.save();
 
     res.status(201).json({
       ...tokens,
@@ -74,6 +79,8 @@ exports.login = async function (req, res) {
     }
 
     const tokens = generateTokens(user._id);
+    user.refreshTokenHash = hashToken(tokens.refreshToken);
+    await user.save();
 
     res.json({
       ...tokens,
@@ -96,13 +103,15 @@ exports.refreshToken = async function (req, res) {
     }
 
     const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
-    const user = await User.findById(decoded.id);
+    const user = await User.findById(decoded.id).select("+refreshTokenHash");
 
-    if (!user) {
+    if (!user || !user.refreshTokenHash || user.refreshTokenHash !== hashToken(refreshToken)) {
       return res.status(401).json({ message: "User tidak ditemukan" });
     }
 
     const tokens = generateTokens(user._id);
+    user.refreshTokenHash = hashToken(tokens.refreshToken);
+    await user.save();
 
     res.json({
       ...tokens,
@@ -119,6 +128,18 @@ exports.refreshToken = async function (req, res) {
 
 exports.logout = async function (req, res) {
   try {
+    const { refreshToken } = req.body;
+    if (refreshToken) {
+      try {
+        const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+        await User.updateOne(
+          { _id: decoded.id, refreshTokenHash: hashToken(refreshToken) },
+          { $unset: { refreshTokenHash: 1 } }
+        );
+      } catch (_) {
+        // Logout remains idempotent when the supplied token is stale or invalid.
+      }
+    }
     res.clearCookie("accessToken");
     res.clearCookie("refreshToken");
     res.status(200).json({ message: "Logout successful" });

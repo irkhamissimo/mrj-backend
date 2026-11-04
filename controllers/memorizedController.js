@@ -1,15 +1,27 @@
 const VerifiedMemorization = require('../models/VerifiedMemorization');
 const Surah = require('../models/Surah');
 const { getJuzNumber, juzMap } = require('../utils/quranHelpers');
+const { mergeRanges } = require('../utils/verseRanges');
+
+const addRange = (record, range) => {
+  const existing = record.ranges?.length ? record.ranges : [record.verses];
+  record.ranges = mergeRanges([...existing, range]);
+  record.verses = {
+    fromVerse: Math.min(...record.ranges.map((item) => item.fromVerse)),
+    toVerse: Math.max(...record.ranges.map((item) => item.toVerse)),
+  };
+};
 // Add previously memorized surah
 exports.addMemorizedSurah = async (req, res) => {
   try {
-    const { surahNumber, fromVerse, toVerse } = req.body;
+    const surahNumber = Number(req.body.surahNumber);
+    const fromVerse = Number(req.body.fromVerse);
+    const toVerse = Number(req.body.toVerse);
 
     // Validate surah and verses
     const surah = await Surah.findOne({ number: surahNumber });
     if (!surah) throw new Error('Invalid surah number');
-    if (fromVerse < 1 || toVerse > surah.numberOfAyahs) {
+    if (!Number.isInteger(fromVerse) || !Number.isInteger(toVerse) || fromVerse < 1 || toVerse > surah.numberOfAyahs || fromVerse > toVerse) {
       throw new Error(`Verse numbers must be between 1 and ${surah.numberOfAyahs}`);
     }
 
@@ -45,10 +57,7 @@ exports.addMemorizedSurah = async (req, res) => {
 
       if (verifiedMem) {
         // Update existing memorization if new verses extend the range
-        verifiedMem.verses = {
-          fromVerse: Math.min(verifiedMem.verses.fromVerse, juzFromVerse),
-          toVerse: Math.max(verifiedMem.verses.toVerse, juzToVerse)
-        };
+        addRange(verifiedMem, { fromVerse: juzFromVerse, toVerse: juzToVerse });
       } else {
         // Create new memorization entry
         verifiedMem = new VerifiedMemorization({
@@ -58,7 +67,9 @@ exports.addMemorizedSurah = async (req, res) => {
           surahEnglishName: surah.englishName,
           juzNumber: currentJuz,
           verses: { fromVerse: juzFromVerse, toVerse: juzToVerse },
+          ranges: [{ fromVerse: juzFromVerse, toVerse: juzToVerse }],
           verificationDate: new Date(),
+          nextReviewAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
           averageRating: 5
         });
       }
@@ -81,10 +92,10 @@ exports.addMemorizedSurah = async (req, res) => {
 // Add previously memorized juz
 exports.addMemorizedJuz = async (req, res) => {
   try {
-    const { juzNumber } = req.body;
+    const juzNumber = Number(req.body.juzNumber);
     
     // Validate juz number
-    if (juzNumber < 1 || juzNumber > 30) {
+    if (!Number.isInteger(juzNumber) || juzNumber < 1 || juzNumber > 30) {
       throw new Error('Invalid juz number');
     }
 
@@ -131,17 +142,8 @@ exports.addMemorizedJuz = async (req, res) => {
 
         if (verifiedMem) {
           // Only update if the new range extends the existing one
-          const newFromVerse = Math.min(verifiedMem.verses.fromVerse, fromVerse);
-          const newToVerse = Math.max(verifiedMem.verses.toVerse, toVerse);
-          
-          // Only update if there's a change
-          if (newFromVerse !== verifiedMem.verses.fromVerse || newToVerse !== verifiedMem.verses.toVerse) {
-            verifiedMem.verses = {
-              fromVerse: newFromVerse,
-              toVerse: newToVerse
-            };
-            await verifiedMem.save();
-          }
+          addRange(verifiedMem, { fromVerse, toVerse });
+          await verifiedMem.save();
         } else {
           verifiedMem = new VerifiedMemorization({
             user: req.user._id,
@@ -150,7 +152,9 @@ exports.addMemorizedJuz = async (req, res) => {
             surahEnglishName: surah.englishName,
             juzNumber,
             verses: { fromVerse, toVerse },
+            ranges: [{ fromVerse, toVerse }],
             verificationDate: new Date(),
+            nextReviewAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
             averageRating: 5
           });
           await verifiedMem.save();
@@ -194,7 +198,7 @@ exports.getAllMemorized = async (req, res) => {
           averageRating: mem.averageRating
         };
       }
-      bySurah[mem.surahNumber].verses.push(mem.verses);
+      bySurah[mem.surahNumber].verses.push(...(mem.ranges?.length ? mem.ranges : [mem.verses]));
 
       // Group by juz
       if (!byJuz[mem.juzNumber]) {
@@ -213,15 +217,14 @@ exports.getAllMemorized = async (req, res) => {
           verses: []
         };
       }
-      byJuz[mem.juzNumber].surahs[mem.surahNumber].verses.push(mem.verses);
+      byJuz[mem.juzNumber].surahs[mem.surahNumber].verses.push(...(mem.ranges?.length ? mem.ranges : [mem.verses]));
     });
 
     // Format verses as a single range string for each surah
     Object.values(bySurah).forEach(surah => {
       if (surah.verses.length > 0) {
-        const minVerse = Math.min(...surah.verses.map(v => v.fromVerse));
-        const maxVerse = Math.max(...surah.verses.map(v => v.toVerse));
-        surah.verses = `${minVerse} - ${maxVerse}`;
+        surah.ranges = mergeRanges(surah.verses);
+        surah.verses = surah.ranges.map(v => `${v.fromVerse} - ${v.toVerse}`).join(', ');
       }
     });
 
@@ -229,9 +232,8 @@ exports.getAllMemorized = async (req, res) => {
     Object.values(byJuz).forEach(juz => {
       Object.values(juz.surahs).forEach(surah => {
         if (surah.verses.length > 0) {
-          const minVerse = Math.min(...surah.verses.map(v => v.fromVerse));
-          const maxVerse = Math.max(...surah.verses.map(v => v.toVerse));
-          surah.verses = `${minVerse} - ${maxVerse}`;
+          surah.ranges = mergeRanges(surah.verses);
+          surah.verses = surah.ranges.map(v => `${v.fromVerse} - ${v.toVerse}`).join(', ');
         }
       });
     });
@@ -249,18 +251,22 @@ exports.getAllMemorized = async (req, res) => {
 exports.updateMemorizedSurahVerses = async (req, res) => {
   try {
     const { surahNumber } = req.params;
-    const { fromVerse, toVerse } = req.body;
+    const fromVerse = Number(req.body.fromVerse);
+    const toVerse = Number(req.body.toVerse);
 
-    if (!fromVerse || !toVerse || fromVerse < 1) {
+    if (!Number.isInteger(fromVerse) || !Number.isInteger(toVerse) || fromVerse < 1) {
       throw new Error('Valid fromVerse and toVerse are required');
     }
     if (fromVerse > toVerse) {
       throw new Error('fromVerse must be less than or equal to toVerse');
     }
 
+    const surah = await Surah.findOne({ number: Number(surahNumber) });
+    if (!surah || toVerse > surah.numberOfAyahs) throw new Error('Invalid verse range');
+
     const result = await VerifiedMemorization.updateMany(
       { surahNumber: parseInt(surahNumber), user: req.user._id },
-      { $set: { 'verses.fromVerse': fromVerse, 'verses.toVerse': toVerse } }
+      { $set: { verses: { fromVerse, toVerse }, ranges: [{ fromVerse, toVerse }] } }
     );
 
     res.json({ message: 'Verses updated', modifiedCount: result.modifiedCount });

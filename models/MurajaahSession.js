@@ -58,7 +58,12 @@ const murajaahSessionSchema = new mongoose.Schema({
     type: Number,
     min: 1,
     max: 5
+  },
+  feedbackSubmittedAt: Date,
+  feedbackRequired: {
+    type: Boolean,
+    default: false
   }
 });
 
-module.exports = mongoose.model('MurajaahSession', murajaahSessionSchema); 
+module.exports = mongoose.model('MurajaahSession', murajaahSessionSchema);

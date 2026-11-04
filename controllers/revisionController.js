@@ -2,6 +2,9 @@ const VerifiedMemorization = require('../models/VerifiedMemorization');
 const MurajaahSession = require('../models/MurajaahSession');
 const MemorizationEntry = require('../models/MemorizationEntry');
 const { awardPoints } = require('../utils/gamification');
+const mongoose = require('mongoose');
+const { nextReviewDate } = require('../utils/reviewSchedule');
+const { mergeRanges } = require('../utils/verseRanges');
 
 // Helper to get the start of the current day in a specific timezone.
 // This is used so daily counters (like the murajaah session circles) reset
@@ -104,12 +107,38 @@ exports.getVerifiedByJuz = async (req, res) => {
 // Start revision session
 exports.startRevision = async (req, res) => {
   try {
-    const { type, identifier, duration } = req.body; // type: 'surah' or 'juz', identifier: surahNumber or juzNumber
+    const { type } = req.body;
+    const identifier = Number(req.body.identifier);
+    const duration = Number(req.body.duration);
+
+    await MurajaahSession.updateMany(
+      {
+        user: req.user._id,
+        completed: false,
+        abandoned: { $ne: true },
+        startTime: { $lt: getStartOfDay() },
+      },
+      { $set: { abandoned: true } }
+    );
+
+    const pendingFeedback = await MurajaahSession.exists({
+      user: req.user._id,
+      completed: true,
+      feedbackRequired: true,
+    });
+    if (pendingFeedback) throw new Error('Rate your previous review before starting another');
+    const activeSession = await MurajaahSession.exists({
+      user: req.user._id,
+      completed: false,
+      abandoned: { $ne: true },
+    });
+    if (activeSession) throw new Error('A review session is already in progress');
 
     // Validate duration
     if (![10, 15, 20, 25].includes(duration)) {
       throw new Error('Invalid duration. Must be 10, 15, 20, or 25 minutes');
     }
+    if (!Number.isInteger(identifier)) throw new Error('Invalid revision identifier');
 
     let verifiedMems;
     if (type === 'surah') {
@@ -136,7 +165,8 @@ exports.startRevision = async (req, res) => {
       duration,
       revisionType: type,
       revisionIdentifier: identifier,
-      verifiedMemorizations: verifiedMems.map(mem => mem._id)
+      verifiedMemorizations: verifiedMems.map(mem => mem._id),
+      feedbackRequired: true
     });
 
     res.json({ session, verifiedMemorizations: verifiedMems });
@@ -149,7 +179,7 @@ exports.startRevision = async (req, res) => {
 exports.pauseRevision = async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const session = await MurajaahSession.findById(sessionId);
+    const session = await MurajaahSession.findOne({ _id: sessionId, user: req.user._id });
     
     if (!session) throw new Error('Murajaah session not found');
     if (session.completed) throw new Error('Cannot pause completed session');
@@ -180,7 +210,7 @@ exports.pauseRevision = async (req, res) => {
 exports.checkSessionStatus = async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const session = await MurajaahSession.findById(sessionId);
+    const session = await MurajaahSession.findOne({ _id: sessionId, user: req.user._id });
 
     if (!session) {
       return res.json({ session });
@@ -203,13 +233,19 @@ exports.checkSessionStatus = async (req, res) => {
 
     // Check if session should be completed
     if (actualDuration >= session.duration * 60 && !session.isPaused) {
-      session.completed = true;
-      session.endTime = now;
-      await session.save();
+      const completedSession = await MurajaahSession.findOneAndUpdate(
+        { _id: session._id, user: req.user._id, completed: false },
+        { $set: { completed: true, endTime: now } },
+        { new: true }
+      );
+      if (!completedSession) return res.json({ session });
 
       // Update verified memorizations
       for (const memId of session.verifiedMemorizations) {
-        const verifiedMem = await VerifiedMemorization.findById(memId);
+        const verifiedMem = await VerifiedMemorization.findOne({
+          _id: memId,
+          user: req.user._id,
+        });
         if (verifiedMem) {
           verifiedMem.lastRevisionDate = now;
           await verifiedMem.save();
@@ -217,7 +253,8 @@ exports.checkSessionStatus = async (req, res) => {
       }
 
       // Award gamification points for murajaah
-      awardPoints(session.user, 'murajaah', session.duration);
+      await awardPoints(session.user, 'murajaah', session.duration);
+      return res.json({ session: completedSession });
     }
 
     res.json({ session });
@@ -262,29 +299,154 @@ exports.getCurrentRevision = async (req, res) => {
     const actualDuration = elapsedTime - (session.totalPauseDuration || 0) * 60;
 
     if (actualDuration >= session.duration * 60 && !session.isPaused) {
-      session.completed = true;
-      session.endTime = now;
-      await session.save();
+      const completedSession = await MurajaahSession.findOneAndUpdate(
+        { _id: session._id, user: req.user._id, completed: false },
+        { $set: { completed: true, endTime: now } },
+        { new: true }
+      );
+      if (!completedSession) return res.json({ session, verifiedMemorizations: [] });
 
       for (const memId of session.verifiedMemorizations) {
-        const verifiedMem = await VerifiedMemorization.findById(memId);
+        const verifiedMem = await VerifiedMemorization.findOne({
+          _id: memId,
+          user: req.user._id,
+        });
         if (verifiedMem) {
           verifiedMem.lastRevisionDate = now;
           await verifiedMem.save();
         }
       }
 
-      awardPoints(session.user, 'murajaah', session.duration);
-      return res.json({ session, verifiedMemorizations: [] });
+      await awardPoints(session.user, 'murajaah', session.duration);
+      return res.json({ session: completedSession, verifiedMemorizations: [] });
     }
 
     const verifiedMemorizations = await VerifiedMemorization.find({
       _id: { $in: session.verifiedMemorizations },
+      user: req.user._id,
     });
 
     res.json({ session, verifiedMemorizations });
   } catch (error) {
     res.status(400).json({ error: error.message });
+  }
+};
+
+// Return material that is due on or before today. Legacy records derive their
+// first review from the most recent revision or verification date.
+exports.getDueReviews = async (req, res) => {
+  try {
+    const endOfToday = new Date(getStartOfDay().getTime() + 24 * 60 * 60 * 1000 - 1);
+    const records = await VerifiedMemorization.find({ user: req.user._id })
+      .sort({ nextReviewAt: 1, surahNumber: 1, 'verses.fromVerse': 1 });
+
+    const due = records.filter((record) => {
+      const baseDate = record.lastRevisionDate || record.verificationDate;
+      const dueAt = record.nextReviewAt || new Date(baseDate.getTime() + 24 * 60 * 60 * 1000);
+      record.nextReviewAt = dueAt;
+      return dueAt <= endOfToday;
+    });
+
+    const grouped = new Map();
+    for (const record of due) {
+      const key = String(record.surahNumber);
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          surahNumber: record.surahNumber,
+          surahName: record.surahName,
+          surahEnglishName: record.surahEnglishName,
+          ranges: [],
+          nextReviewAt: record.nextReviewAt,
+        });
+      }
+      const item = grouped.get(key);
+      item.ranges.push(...(record.ranges?.length ? record.ranges : [record.verses]));
+      if (record.nextReviewAt < item.nextReviewAt) item.nextReviewAt = record.nextReviewAt;
+    }
+
+    const items = Array.from(grouped.values()).map((item) => ({
+      ...item,
+      ranges: mergeRanges(item.ranges),
+    }));
+    res.json({ items });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+exports.getPendingFeedback = async (req, res) => {
+  try {
+    const session = await MurajaahSession.findOne({
+      user: req.user._id,
+      completed: true,
+      feedbackRequired: true,
+      feedbackSubmittedAt: { $exists: false },
+    }).sort({ endTime: -1 });
+    res.json({ session });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+exports.submitFeedback = async (req, res) => {
+  const dbSession = await mongoose.startSession();
+  try {
+    const rating = Number(req.body.rating);
+    if (![1, 2, 3, 4, 5].includes(rating)) {
+      return res.status(400).json({ error: 'Rating must be between 1 and 5' });
+    }
+
+    let result;
+    await dbSession.withTransaction(async () => {
+      const reviewSession = await MurajaahSession.findOne({
+        _id: req.params.sessionId,
+        user: req.user._id,
+      }).session(dbSession);
+
+      if (!reviewSession) throw new Error('Murajaah session not found');
+      if (!reviewSession.completed) throw new Error('Complete the session before rating it');
+      if (reviewSession.feedbackSubmittedAt) {
+        result = { session: reviewSession, alreadySubmitted: true };
+        return;
+      }
+
+      const reviewedAt = reviewSession.endTime || new Date();
+      const records = await VerifiedMemorization.find({
+        _id: { $in: reviewSession.verifiedMemorizations },
+        user: req.user._id,
+      }).session(dbSession);
+      if (records.length !== reviewSession.verifiedMemorizations.length) {
+        throw new Error('One or more reviewed memorization records are unavailable');
+      }
+
+      for (const record of records) {
+        const schedule = nextReviewDate(rating, record.intervalDays || 1, reviewedAt);
+        record.lastRevisionDate = reviewedAt;
+        record.intervalDays = schedule.intervalDays;
+        record.nextReviewAt = schedule.nextReviewAt;
+        record.revisions.push({ date: reviewedAt, rating, duration: reviewSession.duration });
+        const ratedRevisions = record.revisions.filter((revision) => revision.rating);
+        record.averageRating = ratedRevisions.reduce((sum, revision) => sum + revision.rating, 0) / ratedRevisions.length;
+        await record.save({ session: dbSession });
+      }
+
+      reviewSession.rating = rating;
+      reviewSession.feedbackSubmittedAt = new Date();
+      reviewSession.feedbackRequired = false;
+      await reviewSession.save({ session: dbSession });
+      result = {
+        session: reviewSession,
+        nextReviewAt: records.length
+          ? new Date(Math.min(...records.map((record) => record.nextReviewAt.getTime())))
+          : null,
+      };
+    });
+
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  } finally {
+    await dbSession.endSession();
   }
 };
 

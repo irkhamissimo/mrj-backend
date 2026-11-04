@@ -57,6 +57,13 @@ Backend MRJ adalah aplikasi backend berbasis Node.js dan Express yang digunakan 
 - `POST /api/revisions/start` — Mulai sesi murajaah
 - `PUT /api/revisions/:sessionId/pause` — Pause/resume sesi murajaah
 - `GET /api/revisions/:sessionId/status` — Status sesi murajaah
+- `GET /api/revisions/due` — Hafalan yang perlu dimurajaah hari ini
+- `GET /api/revisions/feedback/pending` — Sesi selesai yang menunggu penilaian
+- `POST /api/revisions/:sessionId/feedback` — Simpan nilai ingatan 1–5 dan jadwal berikutnya
+
+Verifikasi vault membutuhkan pengguna dengan `role: "teacher"`; murid harus
+tercantum dalam `assignedStudents`. Transfer verifikasi dan feedback memakai
+transaksi MongoDB, sehingga deployment harus menggunakan replica set.
 
 ### Surah
 - `GET /api/surahs/` — Daftar surah
@@ -147,6 +154,13 @@ Backend MRJ is a Node.js and Express-based backend application for managing Qura
 - `POST /api/revisions/start` — Start murajaah session
 - `PUT /api/revisions/:sessionId/pause` — Pause/resume murajaah session
 - `GET /api/revisions/:sessionId/status` — Murajaah session status
+- `GET /api/revisions/due` — Memorization due for review today
+- `GET /api/revisions/feedback/pending` — Completed session awaiting recall feedback
+- `POST /api/revisions/:sessionId/feedback` — Save a 1–5 recall rating and next schedule
+
+Vault verification requires a user with `role: "teacher"`, and the learner must
+appear in that teacher's `assignedStudents`. Verification and feedback updates
+use MongoDB transactions, so deployments must use a replica set.
 
 ### Surah
 - `GET /api/surahs/` — List of surahs
@@ -174,4 +188,4 @@ This project uses the ISC license.
 
 ---
 
-> For questions or contributions, please open an issue or pull request in this repository. 
+> For questions or contributions, please open an issue or pull request in this repository.

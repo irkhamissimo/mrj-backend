@@ -35,6 +35,10 @@ const verifiedMemorizationSchema = new mongoose.Schema({
       required: true
     }
   },
+  ranges: [{
+    fromVerse: { type: Number, required: true },
+    toVerse: { type: Number, required: true }
+  }],
   // Track when this was verified
   verificationDate: {
     type: Date,
@@ -58,6 +62,16 @@ const verifiedMemorizationSchema = new mongoose.Schema({
     notes: String
   }],
   lastRevisionDate: Date,
+  nextReviewAt: {
+    type: Date,
+    index: true
+  },
+  intervalDays: {
+    type: Number,
+    min: 1,
+    max: 60,
+    default: 1
+  },
   averageRating: {
     type: Number,
     min: 1,
@@ -67,4 +81,9 @@ const verifiedMemorizationSchema = new mongoose.Schema({
   timestamps: true
 });
 
-module.exports = mongoose.model('VerifiedMemorization', verifiedMemorizationSchema); 
+verifiedMemorizationSchema.index(
+  { user: 1, surahNumber: 1, juzNumber: 1 },
+  { unique: true }
+);
+
+module.exports = mongoose.model('VerifiedMemorization', verifiedMemorizationSchema);
