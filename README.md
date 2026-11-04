@@ -60,6 +60,7 @@ Backend MRJ adalah aplikasi backend berbasis Node.js dan Express yang digunakan 
 - `GET /api/revisions/due` — Hafalan yang perlu dimurajaah hari ini
 - `GET /api/revisions/feedback/pending` — Sesi selesai yang menunggu penilaian
 - `POST /api/revisions/:sessionId/feedback` — Simpan nilai ingatan 1–5 dan jadwal berikutnya
+- `DELETE /api/memorized/surah/:surahNumber/range` — Hapus rentang ayat yang dihafal (`fromVerse`, `toVerse`)
 
 Verifikasi vault membutuhkan pengguna dengan `role: "teacher"`; murid harus
 tercantum dalam `assignedStudents`. Transfer verifikasi dan feedback memakai
@@ -157,6 +158,7 @@ Backend MRJ is a Node.js and Express-based backend application for managing Qura
 - `GET /api/revisions/due` — Memorization due for review today
 - `GET /api/revisions/feedback/pending` — Completed session awaiting recall feedback
 - `POST /api/revisions/:sessionId/feedback` — Save a 1–5 recall rating and next schedule
+- `DELETE /api/memorized/surah/:surahNumber/range` — Delete a memorized verse range (`fromVerse`, `toVerse`)
 
 Vault verification requires a user with `role: "teacher"`, and the learner must
 appear in that teacher's `assignedStudents`. Verification and feedback updates

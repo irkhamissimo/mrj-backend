@@ -11,6 +11,70 @@ const addRange = (record, range) => {
     toVerse: Math.max(...record.ranges.map((item) => item.toVerse)),
   };
 };
+
+exports.deleteMemorizedRange = async (req, res) => {
+  const mongoose = require('mongoose');
+  const dbSession = await mongoose.startSession();
+  try {
+    const surahNumber = Number(req.params.surahNumber);
+    const fromVerse = Number(req.body.fromVerse);
+    const toVerse = Number(req.body.toVerse);
+    if (!Number.isInteger(surahNumber) || !Number.isInteger(fromVerse) || !Number.isInteger(toVerse) || fromVerse < 1 || toVerse < fromVerse) {
+      return res.status(400).json({ error: 'A valid surah and verse range are required' });
+    }
+    const surah = await Surah.findOne({ number: surahNumber });
+    if (!surah || toVerse > surah.numberOfAyahs) {
+      return res.status(400).json({ error: 'Verse range is outside the surah' });
+    }
+
+    let deletedRange = false;
+    await dbSession.withTransaction(async () => {
+      const records = await VerifiedMemorization.find({
+        user: req.user._id,
+        surahNumber,
+        'verses.fromVerse': { $lte: toVerse },
+        'verses.toVerse': { $gte: fromVerse },
+      }).session(dbSession);
+      if (!records.length) throw new Error('Memorized range not found');
+
+      for (const record of records) {
+        const ranges = record.ranges?.length ? record.ranges : [record.verses];
+        const remaining = [];
+        for (const range of ranges) {
+          if (range.toVerse < fromVerse || range.fromVerse > toVerse) {
+            remaining.push({ fromVerse: range.fromVerse, toVerse: range.toVerse });
+            continue;
+          }
+          deletedRange = true;
+          if (range.fromVerse < fromVerse) {
+            remaining.push({ fromVerse: range.fromVerse, toVerse: fromVerse - 1 });
+          }
+          if (range.toVerse > toVerse) {
+            remaining.push({ fromVerse: toVerse + 1, toVerse: range.toVerse });
+          }
+        }
+
+        record.ranges = remaining;
+        if (!remaining.length) {
+          await record.deleteOne({ session: dbSession });
+        } else {
+          record.verses = {
+            fromVerse: Math.min(...remaining.map((range) => range.fromVerse)),
+            toVerse: Math.max(...remaining.map((range) => range.toVerse)),
+          };
+          await record.save({ session: dbSession });
+        }
+      }
+      if (!deletedRange) throw new Error('Memorized range not found');
+    });
+
+    res.json({ message: 'Memorized range deleted' });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  } finally {
+    await dbSession.endSession();
+  }
+};
 // Add previously memorized surah
 exports.addMemorizedSurah = async (req, res) => {
   try {
