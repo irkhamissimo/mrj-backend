@@ -51,6 +51,11 @@ const userSchema = new mongoose.Schema({
     type: String,
     select: false,
   },
+  refreshTokenHashes: {
+    type: [String],
+    default: [],
+    select: false,
+  },
 });
 
 userSchema.pre("save", async function (next) {

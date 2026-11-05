@@ -1,0 +1,27 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: mrj-mongo
+    restart: unless-stopped
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mrj-mongo-data:/data/db
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet --eval
+          'try { quit(rs.status().ok ? 0 : 1) }
+          catch (e) {
+            const result = rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "127.0.0.1:27017" }] });
+            quit(result.ok ? 0 : 1);
+          }'
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  mrj-mongo-data:

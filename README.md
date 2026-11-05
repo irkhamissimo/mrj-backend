@@ -26,7 +26,7 @@ Backend MRJ adalah aplikasi backend berbasis Node.js dan Express yang digunakan 
    ```
 3. **Buat file `.env`** dan tambahkan variabel berikut:
    ```env
-   MONGODB_URI=mongodb://localhost:27017/mrj
+   MONGODB_URI=mongodb://localhost:27017/mrj?replicaSet=rs0
    JWT_SECRET=your_jwt_secret
    REFRESH_TOKEN_SECRET=your_refresh_token_secret
    FRONTEND_URL=http://localhost:5173
@@ -35,6 +35,26 @@ Backend MRJ adalah aplikasi backend berbasis Node.js dan Express yang digunakan 
    ```bash
    npm run dev
    ```
+
+### MongoDB lokal dengan Docker Compose
+
+Compose menyalakan MongoDB 7 sebagai single-node replica set `rs0` pada
+`127.0.0.1:27017` dengan volume persisten. URI lokal yang digunakan aplikasi:
+`mongodb://127.0.0.1:27017/mrj?replicaSet=rs0`.
+
+Untuk database baru, jalankan `docker compose up -d` dari folder backend.
+Jika berpindah dari container `docker run` lama yang tidak memakai volume,
+buat backup sebelum menggantinya:
+
+```sh
+docker exec mrj-mongo mongodump --archive > mrj-mongo.archive
+docker rm -f mrj-mongo
+docker compose up -d
+docker exec -i mrj-mongo mongorestore --archive --drop < mrj-mongo.archive
+```
+
+Jangan hapus file backup sampai aplikasi berhasil tersambung dan data sudah
+diverifikasi.
 
 ## Struktur Endpoint Utama
 
@@ -57,9 +77,6 @@ Backend MRJ adalah aplikasi backend berbasis Node.js dan Express yang digunakan 
 - `POST /api/revisions/start` — Mulai sesi murajaah
 - `PUT /api/revisions/:sessionId/pause` — Pause/resume sesi murajaah
 - `GET /api/revisions/:sessionId/status` — Status sesi murajaah
-- `GET /api/revisions/due` — Hafalan yang perlu dimurajaah hari ini
-- `GET /api/revisions/feedback/pending` — Sesi selesai yang menunggu penilaian
-- `POST /api/revisions/:sessionId/feedback` — Simpan nilai ingatan 1–5 dan jadwal berikutnya
 - `DELETE /api/memorized/surah/:surahNumber/range` — Hapus rentang ayat yang dihafal (`fromVerse`, `toVerse`)
 
 Verifikasi vault membutuhkan pengguna dengan `role: "teacher"`; murid harus
@@ -124,7 +141,7 @@ Backend MRJ is a Node.js and Express-based backend application for managing Qura
    ```
 3. **Create a `.env` file** and add the following variables:
    ```env
-   MONGODB_URI=mongodb://localhost:27017/mrj
+   MONGODB_URI=mongodb://localhost:27017/mrj?replicaSet=rs0
    JWT_SECRET=your_jwt_secret
    REFRESH_TOKEN_SECRET=your_refresh_token_secret
    FRONTEND_URL=http://localhost:5173
@@ -133,6 +150,25 @@ Backend MRJ is a Node.js and Express-based backend application for managing Qura
    ```bash
    npm run dev
    ```
+
+### Local MongoDB with Docker Compose
+
+Compose runs MongoDB 7 as a single-node `rs0` replica set on
+`127.0.0.1:27017` with a persistent volume. The local application URI is
+`mongodb://127.0.0.1:27017/mrj?replicaSet=rs0`.
+
+For a new database, run `docker compose up -d` from the backend folder. If
+migrating from the old `docker run` container without a volume, back up its
+data before replacing it:
+
+```sh
+docker exec mrj-mongo mongodump --archive > mrj-mongo.archive
+docker rm -f mrj-mongo
+docker compose up -d
+docker exec -i mrj-mongo mongorestore --archive --drop < mrj-mongo.archive
+```
+
+Keep the backup until the application connects and the restored data is verified.
 
 ## Main Endpoint Structure
 
@@ -155,9 +191,6 @@ Backend MRJ is a Node.js and Express-based backend application for managing Qura
 - `POST /api/revisions/start` — Start murajaah session
 - `PUT /api/revisions/:sessionId/pause` — Pause/resume murajaah session
 - `GET /api/revisions/:sessionId/status` — Murajaah session status
-- `GET /api/revisions/due` — Memorization due for review today
-- `GET /api/revisions/feedback/pending` — Completed session awaiting recall feedback
-- `POST /api/revisions/:sessionId/feedback` — Save a 1–5 recall rating and next schedule
 - `DELETE /api/memorized/surah/:surahNumber/range` — Delete a memorized verse range (`fromVerse`, `toVerse`)
 
 Vault verification requires a user with `role: "teacher"`, and the learner must

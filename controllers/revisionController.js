@@ -121,12 +121,6 @@ exports.startRevision = async (req, res) => {
       { $set: { abandoned: true } }
     );
 
-    const pendingFeedback = await MurajaahSession.exists({
-      user: req.user._id,
-      completed: true,
-      feedbackRequired: true,
-    });
-    if (pendingFeedback) throw new Error('Rate your previous review before starting another');
     const activeSession = await MurajaahSession.exists({
       user: req.user._id,
       completed: false,
@@ -165,8 +159,7 @@ exports.startRevision = async (req, res) => {
       duration,
       revisionType: type,
       revisionIdentifier: identifier,
-      verifiedMemorizations: verifiedMems.map(mem => mem._id),
-      feedbackRequired: true
+      verifiedMemorizations: verifiedMems.map(mem => mem._id)
     });
 
     res.json({ session, verifiedMemorizations: verifiedMems });

@@ -10,9 +10,7 @@ const generateTokens = (userId) => {
   const accessToken = jwt.sign({ id: userId }, process.env.JWT_SECRET, {
     expiresIn: "15m",
   });
-  const refreshToken = jwt.sign({ id: userId }, process.env.REFRESH_TOKEN_SECRET, {
-    expiresIn: "7d",
-  });
+  const refreshToken = jwt.sign({ id: userId, jti: crypto.randomUUID() }, process.env.REFRESH_TOKEN_SECRET);
   return { accessToken, refreshToken };
 };
 
@@ -41,7 +39,7 @@ exports.register = async function (req, res) {
 
     const savedUser = await newUser.save();
     const tokens = generateTokens(savedUser._id);
-    savedUser.refreshTokenHash = hashToken(tokens.refreshToken);
+    savedUser.refreshTokenHashes.push(hashToken(tokens.refreshToken));
     await savedUser.save();
 
     res.status(201).json({
@@ -79,8 +77,7 @@ exports.login = async function (req, res) {
     }
 
     const tokens = generateTokens(user._id);
-    user.refreshTokenHash = hashToken(tokens.refreshToken);
-    await user.save();
+    await User.updateOne({ _id: user._id }, { $push: { refreshTokenHashes: hashToken(tokens.refreshToken) } });
 
     res.json({
       ...tokens,
@@ -102,16 +99,17 @@ exports.refreshToken = async function (req, res) {
       return res.status(401).json({ message: "Refresh token tidak ditemukan" });
     }
 
-    const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
-    const user = await User.findById(decoded.id).select("+refreshTokenHash");
+    // Previously issued refresh tokens expire after seven days. Continue to
+    // accept them while their hash is still present, until the user logs out.
+    const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET, { ignoreExpiration: true });
+    const user = await User.findById(decoded.id).select("+refreshTokenHash +refreshTokenHashes");
 
-    if (!user || !user.refreshTokenHash || user.refreshTokenHash !== hashToken(refreshToken)) {
+    const tokenHash = hashToken(refreshToken);
+    if (!user || (user.refreshTokenHash !== tokenHash && !user.refreshTokenHashes.includes(tokenHash))) {
       return res.status(401).json({ message: "User tidak ditemukan" });
     }
 
-    const tokens = generateTokens(user._id);
-    user.refreshTokenHash = hashToken(tokens.refreshToken);
-    await user.save();
+    const tokens = { accessToken: generateTokens(user._id).accessToken, refreshToken };
 
     res.json({
       ...tokens,
@@ -122,7 +120,10 @@ exports.refreshToken = async function (req, res) {
       },
     });
   } catch (error) {
-    return res.status(401).json({ message: "Invalid refresh token" });
+    if (error.name === "JsonWebTokenError" || error.name === "NotBeforeError") {
+      return res.status(401).json({ message: "Invalid refresh token" });
+    }
+    return res.status(500).json({ message: "Unable to refresh session" });
   }
 };
 
@@ -131,7 +132,11 @@ exports.logout = async function (req, res) {
     const { refreshToken } = req.body;
     if (refreshToken) {
       try {
-        const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+        const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET, { ignoreExpiration: true });
+        await User.updateOne(
+          { _id: decoded.id },
+          { $pull: { refreshTokenHashes: hashToken(refreshToken) } }
+        );
         await User.updateOne(
           { _id: decoded.id, refreshTokenHash: hashToken(refreshToken) },
           { $unset: { refreshTokenHash: 1 } }
